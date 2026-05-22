@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lesson Prep (View)</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="platform-config.js"></script>
+</head>
+
+<body class="view-mode">
+  <div class="page">
+    <div class="auth-bar" id="authBar"></div>
+
+    <!-- HEADER -->
+    <header class="hero">
+
+      <!-- ✅ DESKTOP: header.png puro -->
+      <div class="hero-bg">
+        <img class="hero-img" src="assets/header.png" alt="Header" onerror="this.style.display='none'">
+      </div>
+
+      <!-- ✅ MOBILE: mantém layout antigo -->
+      <div class="hero-content">
+        <div class="brand-left">
+          <img src="assets/logo-left.png" alt="Logo Left" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>Educação<br/>Adventista</div>'">
+        </div>
+
+        <div class="hero-center">
+          <div class="pill pill-primary pill-static">
+            <span id="termLabel">1º Bimestre - LIVRO/TURMA</span>
+          </div>
+
+          <div class="meta">
+            <div class="meta-line">
+              <span class="meta-label">Professor:</span>
+              <span class="meta-value" id="teacherName">Bruno Agostinho</span>
+            </div>
+
+            <div class="meta-line">
+              <span class="meta-label">Programa Bilíngue -</span>
+              <span class="meta-label">DATA:</span>
+              <span class="meta-value" id="dateField">26 a 30 de Janeiro</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="brand-right">
+          <img src="assets/logo-right.png" alt="Logo Right" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>SKY<br/>ENGLISH</div>'">
+        </div>
+      </div>
+    </header>
+
+    <!-- ✅ SEM botão voltar, sem salvar, sem share -->
+    <div class="top-actions">
+  <div class="week-nav">
+    <button class="nav-btn" id="prevWeekBtn" type="button" aria-label="Semana anterior">‹</button>
+
+    <div class="pill pill-week pill-static">
+      <span class="tick"></span>
+      <span id="weekLabel">(26 a 30 de Janeiro)</span>
+    </div>
+
+    <button class="nav-btn" id="nextWeekBtn" type="button" aria-label="Próxima semana">›</button>
+  </div>
+</div>
+
+
+    <!-- TITLE + TURMA (somente leitura) -->
+    <div class="title-row">
+      <div class="lesson-title">LESSON PREP</div>
+
+      <button class="pill pill-week class-btn pill-static" type="button">
+        <span class="tick"></span>
+        <span id="classLabel">Turma: Infantil 3</span>
+      </button>
+    </div>
+
+    <!-- TABLE -->
+    <section class="sheet-wrap">
+      <div class="sheet">
+        <div class="sheet-inner">
+          <table class="lp-table">
+            <colgroup>
+              <col class="col-unit">
+              <col class="col-content">
+              <col class="col-dev">
+              <col class="col-mat">
+            </colgroup>
+
+            <thead>
+              <tr>
+                <th>Unit, Day</th>
+                <th>Conteúdo</th>
+                <th>Desenvolvimento da aula</th>
+                <th>Materiais para a aula</th>
+              </tr>
+            </thead>
+
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- COORDINATION MESSAGE -->
+    <section class="coord">
+      <div class="coord-label">COORDINATION MESSAGE:</div>
+      <div class="coord-box">
+        <div class="coord-edit" id="coordMessage"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ✅ usa o mesmo app.js (porque ele detecta view-mode e não deixa editar) -->
+  <script src="app.js"></script>
+</body>
+</html>

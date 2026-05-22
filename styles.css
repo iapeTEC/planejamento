@@ -1,0 +1,858 @@
+:root{
+  --orange:#e2772a;
+  --navy:#172242;
+  --grid:#1a2347;
+  --paper:#ffffff;
+  --purple-1:#5a2b86;
+  --purple-2:#3f1b64;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  font-family: Arial, Helvetica, sans-serif;
+  background:#f2f2f2;
+  color:#111;
+}
+
+.auth-bar{
+  padding:10px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:#fff;
+  border-bottom:1px solid rgba(0,0,0,.08);
+}
+
+.auth-bar:empty{
+  display:none;
+}
+
+.auth-status{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  font-size:12px;
+}
+
+.auth-status strong{
+  font-size:13px;
+}
+
+.signed-in-box{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  font-size:12px;
+}
+
+.signed-in-box strong{
+  font-size:13px;
+}
+
+.app-locked .sheet-wrap,
+.app-locked .coord,
+.app-locked .top-actions,
+.app-locked .title-row{
+  display:none;
+}
+
+.page{
+  max-width: 980px;
+  margin: 18px auto;
+  background: var(--paper);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.10);
+  overflow:hidden;
+}
+
+/* =========================
+   ADMIN
+========================= */
+.admin-shell{
+  max-width:1100px;
+  margin:24px auto;
+  padding:0 16px;
+}
+
+.admin-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:16px;
+}
+
+.admin-kicker{
+  color:var(--orange);
+  font-weight:900;
+  text-transform:uppercase;
+  font-size:12px;
+}
+
+.admin-header h1,
+.admin-panel h2{
+  margin:0;
+  color:var(--navy);
+}
+
+.admin-layout{
+  display:grid;
+  grid-template-columns: minmax(260px, 360px) 1fr;
+  gap:16px;
+}
+
+.admin-panel{
+  background:#fff;
+  border:1px solid rgba(0,0,0,.1);
+  border-radius:8px;
+  padding:16px;
+}
+
+.teacher-form{
+  display:grid;
+  gap:12px;
+  margin-top:14px;
+}
+
+.teacher-form label{
+  display:grid;
+  gap:6px;
+  font-weight:800;
+  font-size:13px;
+}
+
+.teacher-form input{
+  width:100%;
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:8px;
+  padding:11px 12px;
+  font:inherit;
+}
+
+.panel-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.teachers-list{
+  display:grid;
+  gap:10px;
+}
+
+.teacher-card{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap:12px;
+  align-items:center;
+  border:1px solid rgba(0,0,0,.1);
+  border-radius:8px;
+  padding:12px;
+}
+
+.teacher-card div{
+  display:grid;
+  gap:4px;
+}
+
+.teacher-card span,
+.teacher-card a,
+.empty-state{
+  color:#555;
+  font-size:13px;
+}
+
+.toast{
+  position:fixed;
+  left:50%;
+  bottom:28px;
+  transform:translateX(-50%);
+  background:#111;
+  color:#fff;
+  padding:10px 12px;
+  border-radius:14px;
+  font-weight:800;
+  box-shadow:0 10px 24px rgba(0,0,0,.25);
+  z-index:99999;
+}
+
+@media (max-width: 760px){
+  .admin-header,
+  .auth-bar{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .admin-layout{
+    grid-template-columns:1fr;
+  }
+
+  .teacher-card{
+    grid-template-columns:1fr;
+  }
+}
+
+/* =========================
+   HERO HEADER
+========================= */
+
+.hero{
+  background: transparent;
+  padding: 0;
+  position:relative;
+}
+
+.hero-bg{
+  width:100%;
+  background: transparent;
+}
+
+.hero-img{
+  width:100%;
+  height:auto;
+  display:block;
+  object-fit: contain;
+}
+
+/* MOBILE layout (logos + bimestre) */
+/* No desktop: mostrar o bloco do bimestre/professor abaixo do header.png */
+.hero-content{
+  display:flex;
+  padding: 10px 16px 6px 16px;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  background:#fff;
+}
+
+/* ✅ Ajustes do bloco de informações (bimestre/professor/data) */
+.brand-left, .brand-right{
+  display:none; /* no desktop não precisa, porque já tem no PNG */
+}
+
+.hero-center{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+/* botão tic-tac do bimestre */
+.pill-primary{
+  background: #f6f6f6;
+  border:2px solid rgba(0,0,0,.12);
+  color:#111;
+  font-weight:900;
+}
+
+/* área Professor/Data */
+.meta{
+  font-size:13px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.meta-line{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.meta-label{
+  font-weight:900;
+  color: var(--navy);
+}
+
+.meta-value{
+  font-weight:700;
+  color:#111;
+  padding:2px 8px;
+  border-radius:10px;
+  background:#f7f7f7;
+  border:1px solid rgba(0,0,0,.08);
+}
+
+
+
+/* =========================
+   TOP ACTIONS
+========================= */
+.top-actions{
+  padding: 12px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:#fff;
+}
+
+.pill{
+  border:none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight:700;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+
+.pill-week{
+  background:#fff;
+  border:2px solid rgba(0,0,0,.15);
+  box-shadow:none;
+  font-weight:700;
+}
+
+.pill-static{
+  cursor:default;
+}
+
+.tick{
+  width:12px;
+  height:12px;
+  border-radius:50%;
+  background:var(--orange);
+}
+
+.actions-right{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+
+.btn{
+  border:none;
+  border-radius:12px;
+  padding:10px 12px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.btn-primary{
+  background:var(--purple-1);
+  color:#fff;
+}
+
+.btn-ghost{
+  background:#f5f5f5;
+  color:#111;
+}
+
+/* =========================
+   TITLE
+========================= */
+.title-row{
+  padding: 0 16px 8px 16px;
+  display:flex;
+  justify-content:flex-start;
+}
+
+.lesson-title{
+  font-size:42px;
+  font-weight:900;
+  color: var(--purple-1);
+  letter-spacing:.5px;
+}
+
+.title-row{
+  padding: 0 16px 8px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.class-btn{
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px){
+  .title-row{
+    flex-direction: column;
+    align-items:flex-start;
+  }
+  .class-btn{
+    align-self: flex-start;
+  }
+}
+
+
+/* =========================
+   TABLE (4 colunas iguais ao PDF)
+========================= */
+
+/* ✅ GUTTER real pra caber o badge do lado esquerdo */
+.sheet-wrap{
+  padding: 0 14px 14px 110px;
+}
+
+.sheet{
+  position:relative;
+}
+
+/* ✅ Aqui é o “segredo”: SEM overflow hidden
+   (pra badge aparecer) + borda arredondada desenhada por overlay */
+.sheet-inner{
+  position:relative;
+  border-radius: 18px;
+  overflow: visible;   /* ✅ badge aparece */
+  background:#fff;
+}
+
+/* ✅ BORDA arredondada perfeita por cima, sem invadir o round */
+.sheet-inner::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border:2px solid var(--grid);
+  border-radius:18px;
+  pointer-events:none;
+  z-index:50;          /* fica por cima das linhas internas */
+}
+
+/* TABELA */
+.lp-table{
+  width:100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* ✅ Proporções PDF */
+.col-unit{ width: 12%; }
+.col-content{ width: 28%; }
+.col-dev{ width: 32%; }
+.col-mat{ width: 28%; }
+
+/* HEADER LARANJA */
+.lp-table th{
+  background: var(--orange);
+  border-right: 2px solid var(--grid);
+  border-bottom: 2px solid var(--grid);
+  padding: 8px 10px;
+  font-weight:800;
+  text-align:center;
+}
+
+.lp-table th:last-child{
+  border-right:none;
+}
+
+/* ✅ round do laranja */
+.lp-table thead th:first-child{
+  border-top-left-radius: 16px;
+}
+.lp-table thead th:last-child{
+  border-top-right-radius: 16px;
+}
+.lp-table thead th{
+  background-clip: padding-box;
+}
+
+/* BODY */
+.lp-table td{
+  border-right: 2px solid var(--grid);
+  border-bottom: 2px solid var(--grid);
+  vertical-align: top;
+  background:#fff;
+  padding:0;
+}
+
+/* ✅ remove linha final interna (pra não invadir o round do rodapé) */
+.lp-table tbody tr:last-child td{
+  border-bottom:none;
+}
+
+.lp-table td:last-child{
+  border-right:none;
+}
+
+/* PRIMEIRA COLUNA */
+.td-unit{
+  position: relative;
+  z-index: 10; /* garante que o badge fica acima da tabela */
+}
+
+/* =========================
+   BADGE (fora da coluna)
+========================= */
+
+/* ✅ Agora ele finalmente aparece (pq nada está clipando ele) */
+.day-badge{
+  position:absolute;
+  left: -92px;       /* encaixa no gutter */
+  top: 0;
+  height:100%;
+  width: 86px;
+  display:flex;
+  gap:6px;
+  align-items:stretch;
+  padding:8px 0;
+  pointer-events:none;
+  z-index: 100;      /* acima de tudo */
+}
+
+/* ✅ menorzinho */
+.dayNum{
+  width:52px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:36px;
+  font-weight:900;
+  color:#000;
+  line-height:1;
+}
+
+.weekPill{
+  width:38px;
+  border-radius:12px;
+  background: var(--navy);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  letter-spacing:1px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-transform:uppercase;
+  user-select:none;
+  font-size:12px;
+}
+
+/* =========================
+   RICH EDITABLE FIELDS
+========================= */
+.rich{
+  padding:10px;
+  min-height:78px;
+  font-size:14px;
+  line-height:1.3;
+  outline:none;
+  height:100%;
+}
+
+.rich:focus{
+  box-shadow: inset 0 0 0 3px rgba(90,43,134,.18);
+}
+
+/* =========================
+   COORDINATION MESSAGE
+========================= */
+.coord{
+  padding: 10px 14px 18px 14px;
+}
+
+.coord-label{
+  font-weight:900;
+  color: var(--navy);
+  font-size:13px;
+  margin-bottom:6px;
+}
+
+.coord-box{
+  border:2px solid rgba(0,0,0,.25);
+  border-radius:16px;
+  padding:10px;
+  background:#fff;
+}
+
+.coord-edit{
+  min-height:70px;
+  padding:8px;
+  border-radius:12px;
+}
+
+/* =========================
+   TOOLBAR
+========================= */
+.toolbar{
+  position:fixed;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  background:#fff;
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:16px;
+  padding:8px 10px;
+  box-shadow: 0 12px 26px rgba(0,0,0,.18);
+  display:none;
+  align-items:center;
+  gap:6px;
+  z-index:9999;
+}
+
+.toolbar.show{ display:flex; }
+
+.tbtn{
+  border:none;
+  border-radius:10px;
+  padding:8px 10px;
+  background:#f6f6f6;
+  cursor:pointer;
+  font-weight:800;
+}
+
+.tsep{
+  width:1px;
+  height:22px;
+  background:rgba(0,0,0,.15);
+  margin:0 4px;
+}
+
+.tcolor{
+  width:36px;
+  height:36px;
+  border:none;
+  background:transparent;
+  padding:0;
+}
+
+/* =========================
+   MODALS
+========================= */
+.modal{
+  position:fixed;
+  inset:0;
+  background: rgba(0,0,0,.35);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  z-index:9998;
+}
+
+.modal.show{ display:flex; }
+
+.modal-card{
+  width:min(440px, 100%);
+  background:#fff;
+  border-radius:18px;
+  padding:14px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+}
+
+.modal-title{
+  font-weight:900;
+  font-size:16px;
+  margin-bottom:10px;
+}
+
+.modal-grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+
+.mlabel{
+  font-size:12px;
+  font-weight:800;
+  color:#333;
+}
+
+.mselect{
+  width:100%;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(0,0,0,.18);
+  font-weight:700;
+}
+
+.modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:12px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+@media (max-width: 560px){
+  .page{
+    margin:0;
+    border-radius:0;
+    min-height:100vh;
+  }
+
+  .hero{
+    background: linear-gradient(135deg,var(--purple-1),var(--purple-2));
+    padding: 18px 18px 14px 18px;
+  }
+
+  .hero-bg{
+    display:none;
+  }
+
+  .hero-content{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+  }
+
+  .brand-left,.brand-right{
+    width:94px;
+    min-width:94px;
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    padding-top:4px;
+  }
+
+  .brand-left img, .brand-right img{
+    max-width:88px;
+    max-height:54px;
+    object-fit:contain;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.25));
+  }
+
+  .hero-center{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+  }
+
+  .actions-right{ gap:8px; }
+  .btn{ padding:10px 10px; font-size:12px; }
+  .pill-week{ padding:8px 10px; font-size:12px; }
+
+  .lesson-title{ font-size:34px; }
+
+  /* ✅ mobile rola a tabela */
+  .sheet-wrap{
+    padding: 0 14px 14px 14px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sheet{
+    min-width: 760px;
+  }
+
+  /* ✅ no mobile: NÃO invadir Unit, Day */
+  .day-badge{
+    left: -78px;
+    width: 74px;
+    opacity:.95;
+  }
+
+  .td-unit .rich{
+    padding-left: 10px;
+  }
+}
+
+/* =========================
+   VIEW MODE (Advisor)
+========================= */
+.view-mode .toolbar,
+.view-mode #saveBtn,
+.view-mode #shareBtn,
+.view-mode #weekBtn,
+.view-mode #termBtn{
+  display:none !important;
+}
+
+/* =========================
+   WEEK NAV (big arrows)
+========================= */
+.week-nav{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.nav-btn{
+  width:52px;
+  height:44px;
+  border:none;
+  border-radius:14px;
+  background:#f4f4f4;
+  border:2px solid rgba(0,0,0,.12);
+  font-size:34px;
+  font-weight:900;
+  line-height:1;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  user-select:none;
+}
+
+.nav-btn:active{
+  transform: scale(.96);
+}
+
+@media (max-width: 560px){
+  .week-nav{
+    width:100%;
+    justify-content:space-between;
+  }
+
+  .nav-btn{
+    width:54px;
+    height:46px;
+    font-size:36px;
+  }
+}
+
+/* =========================
+   FAST LOAD / LOADING INDICATOR
+========================= */
+body.is-loading #weekBtn{
+  position:relative;
+  opacity:.92;
+}
+
+body.is-loading #weekBtn::after{
+  content:"";
+  position:absolute;
+  right:12px;
+  top:50%;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  border:2px solid rgba(0,0,0,.25);
+  border-top-color: rgba(0,0,0,.65);
+  transform:translateY(-50%);
+  animation: lpSpin .7s linear infinite;
+}
+
+@keyframes lpSpin{
+  to{ transform:translateY(-50%) rotate(360deg); }
+}
+
+/* Title row: allow class button wrap nicely */
+.title-row{
+  gap:12px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.class-btn{
+  white-space:nowrap;
+}
+
+/* On very small screens keep title + class button aligned */
+@media (max-width: 560px){
+  .title-row{
+    justify-content:space-between;
+  }
+  .class-btn{
+    padding:8px 10px;
+    font-size:12px;
+  }
+}

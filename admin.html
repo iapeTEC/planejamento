@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lesson Prep Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="platform-config.js"></script>
+</head>
+<body class="admin-mode">
+  <div class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <div class="admin-kicker">Lesson Prep</div>
+        <h1>Teachers</h1>
+      </div>
+      <div id="adminAuth" class="auth-slot"></div>
+    </header>
+
+    <main class="admin-layout">
+      <section class="admin-panel">
+        <h2>Add Teacher</h2>
+        <form id="teacherForm" class="teacher-form">
+          <label>
+            Name
+            <input id="teacherNameInput" type="text" autocomplete="name" required>
+          </label>
+          <label>
+            Gmail
+            <input id="teacherEmailInput" type="email" autocomplete="email" required>
+          </label>
+          <label>
+            Classes
+            <input id="teacherClassesInput" type="text" placeholder="Infantil 3, 1 Ano">
+          </label>
+          <button class="btn btn-primary" type="submit">Add Teacher</button>
+        </form>
+      </section>
+
+      <section class="admin-panel teachers-panel">
+        <div class="panel-title-row">
+          <h2>Registered Teachers</h2>
+          <button class="btn btn-ghost" id="refreshTeachers" type="button">Refresh</button>
+        </div>
+        <div id="teachersList" class="teachers-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
