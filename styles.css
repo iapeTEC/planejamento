@@ -399,6 +399,25 @@ body{
   white-space: nowrap;
 }
 
+.class-nav{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.class-nav .nav-btn{
+  width:40px;
+  height:38px;
+  border-radius:12px;
+  font-size:28px;
+}
+
+.nav-btn:disabled,
+.pill:disabled{
+  cursor:default;
+  opacity:.65;
+}
+
 @media (max-width: 560px){
   .title-row{
     flex-direction: column;
@@ -406,6 +425,12 @@ body{
   }
   .class-btn{
     align-self: flex-start;
+  }
+  .class-nav{
+    width:100%;
+  }
+  .class-nav .class-btn{
+    flex:1;
   }
 }
 

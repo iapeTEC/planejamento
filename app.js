@@ -4,7 +4,7 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbyQSx2q9VZxPptoJaW0L8krCYf5MWmgwyi_GmtBrXIynNWjFHSL2Wo4nToYJFrbWlWwJg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwUYXOqArRH7MJp5C9H0MA3br1cjpjgMAm69AX7CgqqUUTH9fjGg6wtb0wM4DHL_Vim-A/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
@@ -47,6 +47,7 @@ const state = {
   teacherEmail: "",
   allowedClasses: [],
   isEnglishTeacher: false,
+  teacherProfileLoaded: false,
   weekStart: null, // Date object (Mon)
   weekLabel: "(26 a 30 de Janeiro)",
   dateText: "",
@@ -152,13 +153,15 @@ function getUserEmail(){
 
 function splitClasses(value){
   return String(value || "")
-    .split(",")
+    .split(/[,;\n]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function getAvailableClasses(){
-  return state.allowedClasses.length ? state.allowedClasses : DEFAULT_CLASSES;
+  if(state.allowedClasses.length) return state.allowedClasses;
+  if(GOOGLE_CLIENT_ID) return state.className ? [state.className] : [];
+  return DEFAULT_CLASSES;
 }
 
 function updateHeaderImage(){
@@ -177,6 +180,7 @@ function applyTeacherProfile(profile){
   state.teacher = teacher.name || state.teacher || teacher.email || "";
   state.allowedClasses = splitClasses(teacher.classes);
   state.isEnglishTeacher = Boolean(teacher.isEnglishTeacher);
+  state.teacherProfileLoaded = true;
 
   const available = getAvailableClasses();
   if(!available.includes(state.className)){
@@ -209,6 +213,20 @@ function updateClassPickerOptions(){
     classSelect.appendChild(opt);
   });
   classSelect.value = state.className;
+  updateClassControls();
+}
+
+function updateClassControls(){
+  const availableClasses = getAvailableClasses();
+  const disabled = state.isViewMode || availableClasses.length <= 1;
+
+  ["classBtn", "prevClassBtn", "nextClassBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    btn.disabled = disabled;
+    btn.classList.toggle("pill-static", disabled);
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+  });
 }
 
 /* =========================
@@ -535,11 +553,15 @@ function initClassPicker(){
 
   const classLabel = document.getElementById("classLabel");
   if(classLabel) classLabel.textContent = `Turma: ${state.className}`;
+  updateClassControls();
 
   if(state.isViewMode) return;
 
   classBtn.addEventListener("click", () => {
-    if(getAvailableClasses().length <= 1) return;
+    if(getAvailableClasses().length <= 1) {
+      toast("Turma fixa conforme cadastro.");
+      return;
+    }
     openModal("classModal");
   });
 
@@ -550,13 +572,24 @@ function initClassPicker(){
     await setClass(selected);
     closeModal("classModal");
   });
+
+  document.getElementById("prevClassBtn")?.addEventListener("click", () => cycleClass(-1));
+  document.getElementById("nextClassBtn")?.addEventListener("click", () => cycleClass(1));
 }
 
 async function setClass(newClass){
+  const availableClasses = getAvailableClasses();
+  if(!availableClasses.includes(newClass)){
+    toast("Turma não cadastrada para este professor.");
+    updateClassPickerOptions();
+    return;
+  }
+
   state.className = newClass;
 
   const classLabel = document.getElementById("classLabel");
   if(classLabel) classLabel.textContent = `Turma: ${state.className}`;
+  updateClassControls();
 
   // ✅ Atualiza URL (term + week + class)
   setQueryParams({
@@ -576,6 +609,18 @@ async function setClass(newClass){
 
   // depois tenta buscar se existe algo salvo pra essa turma
   await loadFromBackend();
+}
+
+async function cycleClass(direction){
+  const availableClasses = getAvailableClasses();
+  if(availableClasses.length <= 1) {
+    toast("Turma fixa conforme cadastro.");
+    return;
+  }
+
+  const currentIndex = Math.max(0, availableClasses.indexOf(state.className));
+  const nextIndex = (currentIndex + direction + availableClasses.length) % availableClasses.length;
+  await setClass(availableClasses[nextIndex]);
 }
 
 

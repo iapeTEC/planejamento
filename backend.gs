@@ -1,6 +1,6 @@
-const CONTROL_SPREADSHEET_ID = "PASTE_CONTROL_SPREADSHEET_ID_HERE";
+const CONTROL_SPREADSHEET_ID = "1AnW4Hb4MFcN8k27ZXiB_9mzjzwHd_MdBPH8S-1VpASI";
 const GOOGLE_CLIENT_ID = "433057640119-o2trlpqs7lac8kt2lbseitnm372em89b.apps.googleusercontent.com";
-const ADMIN_EMAILS = ["bruno@example.com"];
+const ADMIN_EMAILS = ["normafederal@gmail.com"];
 
 const TEACHERS_SHEET = "Teachers";
 const LESSONS_SHEET = "Lessons";
@@ -25,7 +25,7 @@ function doGet(e) {
     } else if (action === "me") {
       payload = getMe_(user, param(e, "teacherEmail"));
     } else {
-    throw new Error("Ação desconhecida.");
+      throw new Error("Ação desconhecida.");
     }
 
     return json_(callback, { ok: true, payload });
