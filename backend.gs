@@ -94,12 +94,12 @@ function verifyUser_(idToken) {
 function getMe_(user, requestedEmail) {
   const teacherEmail = normalizeEmail_(requestedEmail || user.email);
   if (!canAccessTeacher_(user.email, teacherEmail)) throw new Error("Acesso negado.");
-  const teacher = findTeacher_(teacherEmail);
+  const teacher = requireTeacher_(teacherEmail);
   return {
     email: user.email,
     name: user.name,
     isAdmin: isAdmin_(user.email),
-    teacher: teacher ? teacherToObject_(teacher) : null,
+    teacher: teacher,
   };
 }
 
@@ -264,10 +264,14 @@ function teacherToObject_(row) {
     name: row[1] || "",
     classes: row[2] || "",
     spreadsheetId: row[3] || "",
-    active: row[4] === true || row[4] === "TRUE" || row[4] === "true",
+    active: isTruthy_(row[4]),
     createdAt: row[5] || "",
-    isEnglishTeacher: row[6] === true || row[6] === "TRUE" || row[6] === "true",
+    isEnglishTeacher: isTruthy_(row[6]),
   };
+}
+
+function isTruthy_(value) {
+  return value === true || ["true", "sim", "yes", "1"].indexOf(String(value || "").trim().toLowerCase()) !== -1;
 }
 
 function normalizeEmail_(email) {

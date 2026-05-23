@@ -4,7 +4,7 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbwUYXOqArRH7MJp5C9H0MA3br1cjpjgMAm69AX7CgqqUUTH9fjGg6wtb0wM4DHL_Vim-A/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwCUPtllA8Ke-9joxJ7q7QeY0y-TBkbea33kbi2fIWjkltupp5msEUeX7sKlxzX-kqpMw/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
@@ -160,7 +160,7 @@ function splitClasses(value){
 
 function getAvailableClasses(){
   if(state.allowedClasses.length) return state.allowedClasses;
-  if(GOOGLE_CLIENT_ID) return state.className ? [state.className] : [];
+  if(GOOGLE_CLIENT_ID) return [];
   return DEFAULT_CLASSES;
 }
 
@@ -172,9 +172,9 @@ function updateHeaderImage(){
 }
 
 function applyTeacherProfile(profile){
-  if(!profile) return;
+  if(!profile) throw new Error("Perfil do professor não carregado.");
   const teacher = profile.teacher || null;
-  if(!teacher) return;
+  if(!teacher) throw new Error("Professor não cadastrado.");
 
   state.teacherEmail = teacher.email || state.teacherEmail;
   state.teacher = teacher.name || state.teacher || teacher.email || "";
@@ -182,18 +182,21 @@ function applyTeacherProfile(profile){
   state.isEnglishTeacher = Boolean(teacher.isEnglishTeacher);
   state.teacherProfileLoaded = true;
 
+  if(!state.allowedClasses.length) {
+    throw new Error("Nenhuma turma cadastrada para este professor.");
+  }
+
   const available = getAvailableClasses();
   if(!available.includes(state.className)){
-    state.className = available[0] || "";
-    if(state.weekStart){
-      setQueryParams({
-        term: state.term,
-        week: toISODate(state.weekStart),
-        class: state.className,
-        teacherEmail: state.teacherEmail,
-      });
-    }
+    state.className = available[0];
   }
+
+  setQueryParams({
+    term: state.term,
+    week: toISODate(state.weekStart),
+    class: state.className,
+    teacherEmail: state.teacherEmail,
+  });
 
   updateHeaderImage();
   updateClassPickerOptions();
@@ -471,13 +474,17 @@ function renderAuthBar(){
   google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: async (response) => {
-      state.idToken = response.credential;
-      sessionStorage.setItem("lessonPrepIdToken", state.idToken);
-      state.googleUser = decodeJwtPayload(state.idToken);
-      if(!state.teacherEmail) state.teacherEmail = state.googleUser?.email || "";
-      renderAuthBar();
-      await loadCurrentTeacher();
-      await loadFromBackend();
+      try{
+        state.idToken = response.credential;
+        sessionStorage.setItem("lessonPrepIdToken", state.idToken);
+        state.googleUser = decodeJwtPayload(state.idToken);
+        if(!state.teacherEmail) state.teacherEmail = state.googleUser?.email || "";
+        renderAuthBar();
+        await loadCurrentTeacher();
+        await loadFromBackend();
+      }catch(err){
+        toast(err.message || "Erro ao carregar cadastro do professor.");
+      }
     },
   });
   google.accounts.id.renderButton(buttonHost, { theme: "outline", size: "large" });
@@ -973,7 +980,7 @@ function applyQueryState(){
   const q = getQueryParams();
 
   state.term = q.term || state.term || "1";
-  state.className = q.class || state.className || DEFAULT_CLASSES[0];
+  state.className = q.class || state.className || "";
   if(q.teacherEmail) state.teacherEmail = q.teacherEmail;
 
   let w = q.week ? fromISODate(q.week) : defaultWeekIfNone();
@@ -1026,7 +1033,13 @@ async function init(){
   initToolbar();
   initToolbarAutoHide();
 
-  if(GOOGLE_CLIENT_ID && state.idToken) await loadCurrentTeacher();
+  if(GOOGLE_CLIENT_ID && state.idToken) {
+    try{
+      await loadCurrentTeacher();
+    }catch(err){
+      toast(err.message || "Erro ao carregar cadastro do professor.");
+    }
+  }
 
   hydrateUI();
 
