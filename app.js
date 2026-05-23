@@ -4,7 +4,7 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbzvyt0eDb58D1b9DVCoxYIiWvNa0eXIW65Apr8PpTVu2IgY2wVjzOmcY_JhlUG5NwyjWw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyQSx2q9VZxPptoJaW0L8krCYf5MWmgwyi_GmtBrXIynNWjFHSL2Wo4nToYJFrbWlWwJg/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
