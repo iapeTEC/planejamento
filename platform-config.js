@@ -1,5 +1,5 @@
 window.LESSON_PREP_CONFIG = {
-  gasUrl: "https://script.google.com/macros/s/AKfycbw6vlkhv8Di8aU1C02WXbymEi7gJCgVGhwEpCSBUWOzfsRhWYDN7RuYCYKcUF0YZI969g/exec",
+  gasUrl: "https://script.google.com/macros/s/AKfycby6K45pll_fokZiQZ2Rjx68_NZbUkSFCPT3g5I0LqKt3PvX7XP8rR2qxGDn-Hyxg-abxA/exec",
   googleClientId: "433057640119-o2trlpqs7lac8kt2lbseitnm372em89b.apps.googleusercontent.com",
   adminEmails: [
     "normafederal@gmail.com"
