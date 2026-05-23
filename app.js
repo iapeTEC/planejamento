@@ -4,7 +4,7 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbwCUPtllA8Ke-9joxJ7q7QeY0y-TBkbea33kbi2fIWjkltupp5msEUeX7sKlxzX-kqpMw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzi1Di4JCDM3NdbeHFgijWptqvwjqQSHhRraGSwyC7aptQsigR2cAjR4D8U0ejfOoNcbA/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
@@ -168,7 +168,8 @@ function updateHeaderImage(){
   const img = document.getElementById("headerImage");
   if(!img) return;
   img.style.display = "";
-  img.src = state.isEnglishTeacher ? "assets/header.png" : "assets/cabecalho.png";
+  const nextSrc = state.isEnglishTeacher ? "assets/header.png" : "assets/cabecalho.png";
+  if(!img.src.endsWith(nextSrc)) img.src = nextSrc;
 }
 
 function applyTeacherProfile(profile){
@@ -337,7 +338,10 @@ function renderRows(){
 function hookEditListeners(){
   if(state.isViewMode) return;
 
-  document.querySelectorAll(".rich[contenteditable='true']").forEach(el => {
+  document.querySelectorAll(".rich[contenteditable='true'][data-field]").forEach(el => {
+    if(el.dataset.editBound === "true") return;
+    el.dataset.editBound = "true";
+
     el.addEventListener("input", () => {
       const idx = Number(el.dataset.index);
       const field = el.dataset.field;
@@ -348,24 +352,29 @@ function hookEditListeners(){
 
     // ✅ mostra sempre no focus
     el.addEventListener("focus", () => showToolbar());
+    el.addEventListener("blur", () => saveToBackend({ silent: true }));
   });
 
   // COORD MESSAGE
   const coord = document.getElementById("coordMessage");
-  if(coord && coord.getAttribute("contenteditable") === "true"){
+  if(coord && coord.getAttribute("contenteditable") === "true" && coord.dataset.coordBound !== "true"){
+    coord.dataset.coordBound = "true";
     coord.addEventListener("focus", () => showToolbar());
     coord.addEventListener("input", () => {
       state.coordMessage = coord.innerHTML;
     });
+    coord.addEventListener("blur", () => saveToBackend({ silent: true }));
   }
 
   // DATE FIELD
   const dateField = document.getElementById("dateField");
-  if(dateField && dateField.getAttribute("contenteditable") === "true"){
+  if(dateField && dateField.getAttribute("contenteditable") === "true" && dateField.dataset.dateBound !== "true"){
+    dateField.dataset.dateBound = "true";
     dateField.addEventListener("focus", () => showToolbar());
     dateField.addEventListener("input", () => {
       state.dateText = dateField.innerText.trim();
     });
+    dateField.addEventListener("blur", () => saveToBackend({ silent: true }));
   }
 }
 
@@ -753,6 +762,7 @@ function applyLessonPayload(payload){
   state.term = payload.term || state.term;
   state.className = payload.className || state.className;
   state.teacherEmail = payload.teacherEmail || state.teacherEmail;
+  state.isEnglishTeacher = Boolean(state.isEnglishTeacher);
   state.weekLabel = payload.weekLabel || state.weekLabel;
   state.dateText = payload.dateText || state.dateText;
   state.rows = Array.isArray(payload.rows) ? payload.rows : state.rows;
@@ -815,9 +825,9 @@ async function loadFromBackend(key) {
 }
 
 
-function saveToBackend() {
+function saveToBackend(options = {}) {
   if(GOOGLE_CLIENT_ID && !state.idToken){
-    toast("Faça login com Google antes de salvar.");
+    if(!options.silent) toast("Faça login com Google antes de salvar.");
     return Promise.resolve();
   }
 
@@ -877,10 +887,10 @@ function saveToBackend() {
       try { form.remove(); } catch (_) {}
     }, 0);
 
-    toast("Salvo.");
+    if(!options.silent) toast("Salvo.");
   } catch (err) {
     console.warn("saveToBackend failed:", err);
-    toast("Erro ao salvar.");
+    if(!options.silent) toast("Erro ao salvar.");
   }
 }
 

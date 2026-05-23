@@ -143,6 +143,12 @@ body{
   width:auto;
 }
 
+.form-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
 .panel-title-row{
   display:flex;
   align-items:center;
@@ -168,6 +174,11 @@ body{
 
 .teacher-card{
   cursor:pointer;
+}
+
+.teacher-card.selected{
+  border-color:var(--orange);
+  box-shadow:0 0 0 2px rgba(226,119,42,.16);
 }
 
 .admin-layout .teachers-panel:last-child{
@@ -366,6 +377,11 @@ body{
 .btn-ghost{
   background:#f5f5f5;
   color:#111;
+}
+
+.btn-danger{
+  background:#b3261e;
+  color:#fff;
 }
 
 /* =========================

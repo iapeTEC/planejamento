@@ -48,6 +48,9 @@ function doPost(e) {
     } else if (action === "updateTeacher") {
       requireAdmin_(user.email);
       updateTeacher_(data);
+    } else if (action === "deleteTeacher") {
+      requireAdmin_(user.email);
+      deleteTeacher_(data);
     } else {
       throw new Error("Ação desconhecida.");
     }
@@ -156,18 +159,40 @@ function addTeacher_(data) {
 }
 
 function updateTeacher_(data) {
+  const originalEmail = normalizeEmail_(data.originalEmail || data.email);
   const email = normalizeEmail_(data.email);
+  if (!email) throw new Error("O Gmail do professor é obrigatório.");
+
   const sheet = teachersSheet_();
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (normalizeEmail_(rows[i][0]) === email) {
-      sheet.getRange(i + 1, 2, 1, 3).setValues([[
+    if (normalizeEmail_(rows[i][0]) === originalEmail) {
+      if (email !== originalEmail && findTeacher_(email)) {
+        throw new Error("Já existe professor cadastrado com este Gmail.");
+      }
+      sheet.getRange(i + 1, 1, 1, 4).setValues([[
+        email,
         String(data.name || rows[i][1]).trim(),
         String(data.classes || rows[i][2]).trim(),
         rows[i][3],
       ]]);
       sheet.getRange(i + 1, 5).setValue(data.active !== false);
       sheet.getRange(i + 1, 7).setValue(data.isEnglishTeacher === true || data.isEnglishTeacher === "true");
+      return;
+    }
+  }
+  throw new Error("Professor não encontrado.");
+}
+
+function deleteTeacher_(data) {
+  const email = normalizeEmail_(data.email);
+  if (!email) throw new Error("O Gmail do professor é obrigatório.");
+
+  const sheet = teachersSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (normalizeEmail_(rows[i][0]) === email) {
+      sheet.deleteRow(i + 1);
       return;
     }
   }

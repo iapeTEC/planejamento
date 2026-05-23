@@ -6,7 +6,26 @@ const adminState = {
   idToken: sessionStorage.getItem("lessonPrepIdToken") || "",
   user: null,
   selectedTeacher: null,
+  teachers: [],
+  editingTeacher: null,
+  teacherRefreshTimer: null,
 };
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function splitClasses(value) {
+  return String(value || "")
+    .split(/[,;\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 function adminToast(text) {
   const t = document.createElement("div");
@@ -47,9 +66,14 @@ function renderAdminAuth() {
       sessionStorage.removeItem("lessonPrepIdToken");
       adminState.idToken = "";
       adminState.user = null;
+      adminState.selectedTeacher = null;
+      adminState.editingTeacher = null;
+      if (adminState.teacherRefreshTimer) clearInterval(adminState.teacherRefreshTimer);
+      adminState.teacherRefreshTimer = null;
       renderAdminAuth();
       renderTeachers([]);
-      renderLessons([]);
+      renderTeacherClasses(null);
+      setTeacherFormMode(null);
     });
     slot.append(box, out);
     return;
@@ -132,6 +156,7 @@ function apiPost(action, data) {
 }
 
 function renderTeachers(teachers) {
+  adminState.teachers = teachers || [];
   const list = document.getElementById("teachersList");
   if (!list) return;
   list.innerHTML = "";
@@ -144,58 +169,71 @@ function renderTeachers(teachers) {
   teachers.forEach((teacher) => {
     const item = document.createElement("article");
     item.className = "teacher-card";
+    if (adminState.selectedTeacher?.email === teacher.email) item.classList.add("selected");
     item.innerHTML = `
       <div>
-        <strong>${teacher.name || teacher.email}</strong>
-        <span>${teacher.email}</span>
+        <strong>${escapeHtml(teacher.name || teacher.email)}</strong>
+        <span>${escapeHtml(teacher.email)}</span>
       </div>
       <div>
-        <span>${teacher.classes || "Sem turmas"}</span>
+        <span>${escapeHtml(teacher.classes || "Sem turmas")}</span>
         <span>${teacher.isEnglishTeacher ? "Inglês" : "Geral"}</span>
         <a href="https://docs.google.com/spreadsheets/d/${teacher.spreadsheetId}/edit" target="_blank" rel="noreferrer">Planilha</a>
       </div>
     `;
-    item.addEventListener("click", () => selectTeacher(teacher));
+    item.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
+      selectTeacher(teacher);
+    });
     list.appendChild(item);
   });
 }
 
-function renderLessons(lessons) {
+function buildPlannerLink(teacher, className) {
+  const params = new URLSearchParams(window.location.search);
+  const url = new URL("index.html", window.location.href);
+  url.search = "";
+  url.searchParams.set("teacherEmail", teacher.email);
+  url.searchParams.set("class", className);
+  url.searchParams.set("term", "1");
+  if (params.get("gas")) url.searchParams.set("gas", params.get("gas"));
+  if (params.get("client_id")) url.searchParams.set("client_id", params.get("client_id"));
+  return url.toString();
+}
+
+function renderTeacherClasses(teacher) {
   const list = document.getElementById("lessonsList");
   if (!list) return;
   list.innerHTML = "";
 
-  if (!adminState.selectedTeacher) {
-    list.innerHTML = `<div class="empty-state">Selecione um professor para ver os planejamentos.</div>`;
+  if (!teacher) {
+    list.innerHTML = `<div class="empty-state">Selecione um professor para ver as turmas.</div>`;
     return;
   }
 
-  if (!lessons.length) {
-    list.innerHTML = `<div class="empty-state">Nenhum planejamento lançado para este professor.</div>`;
+  const classes = splitClasses(teacher.classes);
+  if (!classes.length) {
+    list.innerHTML = `<div class="empty-state">Nenhuma turma cadastrada para este professor.</div>`;
     return;
   }
 
-  lessons.forEach((lesson) => {
-    const payload = lesson.payload || {};
-    const term = payload.term || lesson.term || "";
-    const week = payload.weekStart || lesson.weekStart || "";
-    const className = payload.className || lesson.className || "";
-    const title = `${term ? term + "º Bimestre" : "Planejamento"} - ${className || "Turma"}`;
-    const editLink = `index.html?teacherEmail=${encodeURIComponent(adminState.selectedTeacher.email)}&term=${encodeURIComponent(term || "1")}&week=${encodeURIComponent(week)}&class=${encodeURIComponent(className)}`;
-    const viewLink = `view.html?teacherEmail=${encodeURIComponent(adminState.selectedTeacher.email)}&term=${encodeURIComponent(term || "1")}&week=${encodeURIComponent(week)}&class=${encodeURIComponent(className)}`;
-
+  classes.forEach((className) => {
+    const editLink = buildPlannerLink(teacher, className);
     const item = document.createElement("article");
     item.className = "teacher-card";
     item.innerHTML = `
       <div>
-        <strong>${title}</strong>
-        <span>${payload.weekLabel || week || "Semana não informada"}</span>
+        <strong>${escapeHtml(className)}</strong>
+        <span>${escapeHtml(teacher.name || teacher.email)}</span>
       </div>
       <div>
-        <a href="${editLink}">Editar</a>
-        <a href="${viewLink}">Visualizar</a>
+        <a href="${editLink}" target="_blank" rel="noreferrer">Abrir planejamento</a>
       </div>
     `;
+    item.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
+      window.open(editLink, "_blank", "noopener");
+    });
     list.appendChild(item);
   });
 }
@@ -203,28 +241,64 @@ function renderLessons(lessons) {
 async function selectTeacher(teacher) {
   adminState.selectedTeacher = teacher;
   const title = document.getElementById("lessonsTitle");
-  if (title) title.textContent = `Planejamentos - ${teacher.name || teacher.email}`;
-  await loadLessons();
+  if (title) title.textContent = `Turmas - ${teacher.name || teacher.email}`;
+  setTeacherFormMode(teacher);
+  renderTeachers(adminState.teachers);
+  renderTeacherClasses(teacher);
 }
 
 async function loadTeachers() {
   if (!adminState.idToken) return;
   try {
+    const wasEditing = Boolean(adminState.editingTeacher);
     const teachers = await apiGet("adminList");
     renderTeachers(teachers || []);
+    if (adminState.selectedTeacher) {
+      const selected = (teachers || []).find((teacher) => teacher.email === adminState.selectedTeacher.email);
+      adminState.selectedTeacher = selected || null;
+      if (adminState.selectedTeacher) {
+        if (!wasEditing) setTeacherFormMode(adminState.selectedTeacher);
+        renderTeacherClasses(adminState.selectedTeacher);
+      } else {
+        setTeacherFormMode(null);
+        renderTeacherClasses(null);
+      }
+    }
   } catch (err) {
     adminToast(err.message);
   }
 }
 
-async function loadLessons() {
-  if (!adminState.idToken || !adminState.selectedTeacher) return;
-  try {
-    const lessons = await apiGet("adminListLessons", { teacherEmail: adminState.selectedTeacher.email });
-    renderLessons(lessons || []);
-  } catch (err) {
-    adminToast(err.message);
-  }
+function startTeacherAutoRefresh() {
+  if (adminState.teacherRefreshTimer) clearInterval(adminState.teacherRefreshTimer);
+  adminState.teacherRefreshTimer = setInterval(() => {
+    if (adminState.idToken) loadTeachers();
+  }, 10000);
+}
+
+function setTeacherFormMode(teacher) {
+  adminState.editingTeacher = teacher || null;
+  const form = document.getElementById("teacherForm");
+  if (!form) return;
+
+  document.getElementById("teacherFormTitle").textContent = teacher ? "Editar professor" : "Cadastrar professor";
+  document.getElementById("saveTeacherBtn").textContent = teacher ? "Salvar alterações" : "Cadastrar professor";
+  document.getElementById("cancelTeacherEdit").hidden = !teacher;
+  document.getElementById("deleteTeacherBtn").hidden = !teacher;
+
+  document.getElementById("teacherNameInput").value = teacher?.name || "";
+  document.getElementById("teacherEmailInput").value = teacher?.email || "";
+  document.getElementById("teacherClassesInput").value = teacher?.classes || "";
+  document.getElementById("teacherEnglishInput").checked = Boolean(teacher?.isEnglishTeacher);
+}
+
+function readTeacherForm() {
+  return {
+    name: document.getElementById("teacherNameInput").value,
+    email: document.getElementById("teacherEmailInput").value,
+    classes: document.getElementById("teacherClassesInput").value,
+    isEnglishTeacher: document.getElementById("teacherEnglishInput").checked,
+  };
 }
 
 function initAdmin() {
@@ -235,25 +309,52 @@ function initAdmin() {
       clearInterval(wait);
       renderAdminAuth();
       loadTeachers();
+      startTeacherAutoRefresh();
     }
   }, 100);
 
   document.getElementById("refreshTeachers")?.addEventListener("click", loadTeachers);
-  document.getElementById("refreshLessons")?.addEventListener("click", loadLessons);
+  document.getElementById("cancelTeacherEdit")?.addEventListener("click", () => {
+    adminState.selectedTeacher = null;
+    setTeacherFormMode(null);
+    renderTeachers(adminState.teachers);
+    renderTeacherClasses(null);
+    const title = document.getElementById("lessonsTitle");
+    if (title) title.textContent = "Turmas";
+  });
+  document.getElementById("deleteTeacherBtn")?.addEventListener("click", async () => {
+    if (!adminState.idToken || !adminState.editingTeacher) return;
+    const teacher = adminState.editingTeacher;
+    const ok = window.confirm(`Deletar ${teacher.name || teacher.email}?`);
+    if (!ok) return;
+    await apiPost("deleteTeacher", { email: teacher.email });
+    adminState.selectedTeacher = null;
+    setTeacherFormMode(null);
+    renderTeacherClasses(null);
+    adminToast("Professor deletado.");
+    setTimeout(loadTeachers, 800);
+  });
   document.getElementById("teacherForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!adminState.idToken) {
       adminToast("Entre com Google primeiro.");
       return;
     }
-    await apiPost("addTeacher", {
-      name: document.getElementById("teacherNameInput").value,
-      email: document.getElementById("teacherEmailInput").value,
-      classes: document.getElementById("teacherClassesInput").value,
-      isEnglishTeacher: document.getElementById("teacherEnglishInput").checked,
-    });
+    const payload = readTeacherForm();
+    if (adminState.editingTeacher) {
+      await apiPost("updateTeacher", {
+        ...payload,
+        originalEmail: adminState.editingTeacher.email,
+      });
+      adminToast("Professor atualizado.");
+    } else {
+      await apiPost("addTeacher", payload);
+      adminToast("Professor cadastrado.");
+    }
     event.currentTarget.reset();
-    adminToast("Professor cadastrado.");
+    adminState.selectedTeacher = null;
+    setTeacherFormMode(null);
+    renderTeacherClasses(null);
     setTimeout(loadTeachers, 800);
   });
 }

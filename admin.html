@@ -21,7 +21,7 @@
 
     <main class="admin-layout">
       <section class="admin-panel">
-        <h2>Cadastrar professor</h2>
+        <h2 id="teacherFormTitle">Cadastrar professor</h2>
         <form id="teacherForm" class="teacher-form">
           <label>
             Nome
@@ -39,7 +39,11 @@
             <input id="teacherEnglishInput" type="checkbox">
             Professora/professor de inglês
           </label>
-          <button class="btn btn-primary" type="submit">Cadastrar professor</button>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="saveTeacherBtn" type="submit">Cadastrar professor</button>
+            <button class="btn btn-ghost" id="cancelTeacherEdit" type="button" hidden>Cancelar</button>
+          </div>
+          <button class="btn btn-danger" id="deleteTeacherBtn" type="button" hidden>Deletar professor</button>
         </form>
       </section>
 
@@ -53,11 +57,10 @@
 
       <section class="admin-panel teachers-panel">
         <div class="panel-title-row">
-          <h2 id="lessonsTitle">Planejamentos</h2>
-          <button class="btn btn-ghost" id="refreshLessons" type="button">Atualizar</button>
+          <h2 id="lessonsTitle">Turmas</h2>
         </div>
         <div id="lessonsList" class="teachers-list">
-          <div class="empty-state">Selecione um professor para ver os planejamentos.</div>
+          <div class="empty-state">Selecione um professor para ver as turmas.</div>
         </div>
       </section>
     </main>
