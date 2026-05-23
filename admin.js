@@ -5,6 +5,7 @@ const adminGoogleClientId = new URLSearchParams(window.location.search).get("cli
 const adminState = {
   idToken: sessionStorage.getItem("lessonPrepIdToken") || "",
   user: null,
+  selectedTeacher: null,
 };
 
 function adminToast(text) {
@@ -30,7 +31,7 @@ function renderAdminAuth() {
   slot.innerHTML = "";
 
   if (!adminGoogleClientId) {
-    slot.textContent = "Set googleClientId in platform-config.js";
+    slot.textContent = "Configure googleClientId no platform-config.js";
     return;
   }
 
@@ -41,13 +42,14 @@ function renderAdminAuth() {
     const out = document.createElement("button");
     out.className = "btn btn-ghost";
     out.type = "button";
-    out.textContent = "Sign out";
+    out.textContent = "Sair";
     out.addEventListener("click", () => {
       sessionStorage.removeItem("lessonPrepIdToken");
       adminState.idToken = "";
       adminState.user = null;
       renderAdminAuth();
       renderTeachers([]);
+      renderLessons([]);
     });
     slot.append(box, out);
     return;
@@ -82,12 +84,12 @@ function apiGet(action, params = {}) {
     window[cb] = (resp) => {
       delete window[cb];
       script.remove();
-      resp && resp.ok ? resolve(resp.payload) : reject(new Error(resp?.error || "Backend error"));
+      resp && resp.ok ? resolve(resp.payload) : reject(new Error(resp?.error || "Erro no backend"));
     };
     script.onerror = () => {
       delete window[cb];
       script.remove();
-      reject(new Error("Could not reach backend."));
+      reject(new Error("Não foi possível acessar o backend."));
     };
     script.src = url.toString();
     document.head.appendChild(script);
@@ -135,7 +137,7 @@ function renderTeachers(teachers) {
   list.innerHTML = "";
 
   if (!teachers.length) {
-    list.innerHTML = `<div class="empty-state">No teachers loaded.</div>`;
+    list.innerHTML = `<div class="empty-state">Nenhum professor carregado.</div>`;
     return;
   }
 
@@ -148,12 +150,61 @@ function renderTeachers(teachers) {
         <span>${teacher.email}</span>
       </div>
       <div>
-        <span>${teacher.classes || "No classes"}</span>
-        <a href="https://docs.google.com/spreadsheets/d/${teacher.spreadsheetId}/edit" target="_blank" rel="noreferrer">Spreadsheet</a>
+        <span>${teacher.classes || "Sem turmas"}</span>
+        <span>${teacher.isEnglishTeacher ? "Inglês" : "Geral"}</span>
+        <a href="https://docs.google.com/spreadsheets/d/${teacher.spreadsheetId}/edit" target="_blank" rel="noreferrer">Planilha</a>
+      </div>
+    `;
+    item.addEventListener("click", () => selectTeacher(teacher));
+    list.appendChild(item);
+  });
+}
+
+function renderLessons(lessons) {
+  const list = document.getElementById("lessonsList");
+  if (!list) return;
+  list.innerHTML = "";
+
+  if (!adminState.selectedTeacher) {
+    list.innerHTML = `<div class="empty-state">Selecione um professor para ver os planejamentos.</div>`;
+    return;
+  }
+
+  if (!lessons.length) {
+    list.innerHTML = `<div class="empty-state">Nenhum planejamento lançado para este professor.</div>`;
+    return;
+  }
+
+  lessons.forEach((lesson) => {
+    const payload = lesson.payload || {};
+    const term = payload.term || lesson.term || "";
+    const week = payload.weekStart || lesson.weekStart || "";
+    const className = payload.className || lesson.className || "";
+    const title = `${term ? term + "º Bimestre" : "Planejamento"} - ${className || "Turma"}`;
+    const editLink = `index.html?teacherEmail=${encodeURIComponent(adminState.selectedTeacher.email)}&term=${encodeURIComponent(term || "1")}&week=${encodeURIComponent(week)}&class=${encodeURIComponent(className)}`;
+    const viewLink = `view.html?teacherEmail=${encodeURIComponent(adminState.selectedTeacher.email)}&term=${encodeURIComponent(term || "1")}&week=${encodeURIComponent(week)}&class=${encodeURIComponent(className)}`;
+
+    const item = document.createElement("article");
+    item.className = "teacher-card";
+    item.innerHTML = `
+      <div>
+        <strong>${title}</strong>
+        <span>${payload.weekLabel || week || "Semana não informada"}</span>
+      </div>
+      <div>
+        <a href="${editLink}">Editar</a>
+        <a href="${viewLink}">Visualizar</a>
       </div>
     `;
     list.appendChild(item);
   });
+}
+
+async function selectTeacher(teacher) {
+  adminState.selectedTeacher = teacher;
+  const title = document.getElementById("lessonsTitle");
+  if (title) title.textContent = `Planejamentos - ${teacher.name || teacher.email}`;
+  await loadLessons();
 }
 
 async function loadTeachers() {
@@ -161,6 +212,16 @@ async function loadTeachers() {
   try {
     const teachers = await apiGet("adminList");
     renderTeachers(teachers || []);
+  } catch (err) {
+    adminToast(err.message);
+  }
+}
+
+async function loadLessons() {
+  if (!adminState.idToken || !adminState.selectedTeacher) return;
+  try {
+    const lessons = await apiGet("adminListLessons", { teacherEmail: adminState.selectedTeacher.email });
+    renderLessons(lessons || []);
   } catch (err) {
     adminToast(err.message);
   }
@@ -178,19 +239,21 @@ function initAdmin() {
   }, 100);
 
   document.getElementById("refreshTeachers")?.addEventListener("click", loadTeachers);
+  document.getElementById("refreshLessons")?.addEventListener("click", loadLessons);
   document.getElementById("teacherForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!adminState.idToken) {
-      adminToast("Sign in first.");
+      adminToast("Entre com Google primeiro.");
       return;
     }
     await apiPost("addTeacher", {
       name: document.getElementById("teacherNameInput").value,
       email: document.getElementById("teacherEmailInput").value,
       classes: document.getElementById("teacherClassesInput").value,
+      isEnglishTeacher: document.getElementById("teacherEnglishInput").checked,
     });
     event.currentTarget.reset();
-    adminToast("Teacher added.");
+    adminToast("Professor cadastrado.");
     setTimeout(loadTeachers, 800);
   });
 }

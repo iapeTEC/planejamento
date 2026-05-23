@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Lesson Prep Admin</title>
+  <title>Coordenação - Planejamentos</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -13,18 +13,18 @@
   <div class="admin-shell">
     <header class="admin-header">
       <div>
-        <div class="admin-kicker">Lesson Prep</div>
-        <h1>Teachers</h1>
+        <div class="admin-kicker">Planejamentos</div>
+        <h1>Coordenação</h1>
       </div>
       <div id="adminAuth" class="auth-slot"></div>
     </header>
 
     <main class="admin-layout">
       <section class="admin-panel">
-        <h2>Add Teacher</h2>
+        <h2>Cadastrar professor</h2>
         <form id="teacherForm" class="teacher-form">
           <label>
-            Name
+            Nome
             <input id="teacherNameInput" type="text" autocomplete="name" required>
           </label>
           <label>
@@ -32,19 +32,33 @@
             <input id="teacherEmailInput" type="email" autocomplete="email" required>
           </label>
           <label>
-            Classes
-            <input id="teacherClassesInput" type="text" placeholder="Infantil 3, 1 Ano">
+            Turmas
+            <input id="teacherClassesInput" type="text" placeholder="Infantil 3, 1º Ano">
           </label>
-          <button class="btn btn-primary" type="submit">Add Teacher</button>
+          <label class="check-row">
+            <input id="teacherEnglishInput" type="checkbox">
+            Professora/professor de inglês
+          </label>
+          <button class="btn btn-primary" type="submit">Cadastrar professor</button>
         </form>
       </section>
 
       <section class="admin-panel teachers-panel">
         <div class="panel-title-row">
-          <h2>Registered Teachers</h2>
-          <button class="btn btn-ghost" id="refreshTeachers" type="button">Refresh</button>
+          <h2>Professores cadastrados</h2>
+          <button class="btn btn-ghost" id="refreshTeachers" type="button">Atualizar</button>
         </div>
         <div id="teachersList" class="teachers-list"></div>
+      </section>
+
+      <section class="admin-panel teachers-panel">
+        <div class="panel-title-row">
+          <h2 id="lessonsTitle">Planejamentos</h2>
+          <button class="btn btn-ghost" id="refreshLessons" type="button">Atualizar</button>
+        </div>
+        <div id="lessonsList" class="teachers-list">
+          <div class="empty-state">Selecione um professor para ver os planejamentos.</div>
+        </div>
       </section>
     </main>
   </div>

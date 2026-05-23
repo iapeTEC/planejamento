@@ -7,8 +7,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzvyt0eDb58D1b9DVCoxYIiWvNa0eXIW65Apr8PpTVu2IgY2wVjzOmcY_JhlUG5NwyjWw/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
-// You can override the GAS URL by adding ?gas=YOUR_URL to the page URL,
-// or by setting window.GAS_URL before this script runs.
+// A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
 const _qs = new URLSearchParams(window.location.search);
 const GAS_URL = _qs.get("gas") || window.GAS_URL || PLATFORM_CONFIG.gasUrl || API_URL;
 const GOOGLE_CLIENT_ID = _qs.get("client_id") || PLATFORM_CONFIG.googleClientId || "";
@@ -26,7 +25,7 @@ const MONTHS_PT = [
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
 ];
 
-const CLASSES = [
+const DEFAULT_CLASSES = [
   "Infantil 3",
   "Infantil 4",
   "Infantil 5",
@@ -46,6 +45,8 @@ const state = {
   className: "", // ✅ NOVO
   teacher: "",
   teacherEmail: "",
+  allowedClasses: [],
+  isEnglishTeacher: false,
   weekStart: null, // Date object (Mon)
   weekLabel: "(26 a 30 de Janeiro)",
   dateText: "",
@@ -147,6 +148,67 @@ function decodeJwtPayload(token){
 
 function getUserEmail(){
   return (state.teacherEmail || state.googleUser?.email || "").toLowerCase();
+}
+
+function splitClasses(value){
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getAvailableClasses(){
+  return state.allowedClasses.length ? state.allowedClasses : DEFAULT_CLASSES;
+}
+
+function updateHeaderImage(){
+  const img = document.getElementById("headerImage");
+  if(!img) return;
+  img.style.display = "";
+  img.src = state.isEnglishTeacher ? "assets/header.png" : "assets/cabecalho.png";
+}
+
+function applyTeacherProfile(profile){
+  if(!profile) return;
+  const teacher = profile.teacher || null;
+  if(!teacher) return;
+
+  state.teacherEmail = teacher.email || state.teacherEmail;
+  state.teacher = teacher.name || state.teacher || teacher.email || "";
+  state.allowedClasses = splitClasses(teacher.classes);
+  state.isEnglishTeacher = Boolean(teacher.isEnglishTeacher);
+
+  const available = getAvailableClasses();
+  if(!available.includes(state.className)){
+    state.className = available[0] || "";
+    if(state.weekStart){
+      setQueryParams({
+        term: state.term,
+        week: toISODate(state.weekStart),
+        class: state.className,
+        teacherEmail: state.teacherEmail,
+      });
+    }
+  }
+
+  updateHeaderImage();
+  updateClassPickerOptions();
+  hydrateUI();
+}
+
+function updateClassPickerOptions(){
+  const classSelect = document.getElementById("classSelect");
+  if(!classSelect) return;
+
+  const availableClasses = getAvailableClasses();
+  classSelect.innerHTML = "";
+  availableClasses.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    classSelect.appendChild(opt);
+  });
+  classSelect.value = state.className;
 }
 
 /* =========================
@@ -276,15 +338,6 @@ function hookEditListeners(){
     });
   }
 
-  // TEACHER
-  const teacher = document.getElementById("teacherName");
-  if(teacher && teacher.getAttribute("contenteditable") === "true"){
-    teacher.addEventListener("focus", () => showToolbar());
-    teacher.addEventListener("input", () => {
-      state.teacher = teacher.innerText.trim();
-    });
-  }
-
   // DATE FIELD
   const dateField = document.getElementById("dateField");
   if(dateField && dateField.getAttribute("contenteditable") === "true"){
@@ -352,8 +405,8 @@ function renderAuthBar(){
   if(!GOOGLE_CLIENT_ID){
     authBar.innerHTML = `
       <div class="auth-status">
-        <strong>Google login is not configured.</strong>
-        <span>Add googleClientId in platform-config.js to enable private teacher access.</span>
+        <strong>Login do Google não configurado.</strong>
+        <span>Configure googleClientId no platform-config.js para ativar o acesso privado.</span>
       </div>
     `;
     document.body.classList.remove("app-locked");
@@ -389,7 +442,7 @@ function renderAuthBar(){
 
   const status = document.createElement("div");
   status.className = "auth-status";
-  status.innerHTML = `<strong>Entrar com Google</strong><span>Use o Gmail cadastrado para acessar seu Lesson Prep.</span>`;
+  status.innerHTML = `<strong>Entrar com Google</strong><span>Use o Gmail cadastrado para acessar seu planejamento.</span>`;
 
   const buttonHost = document.createElement("div");
   buttonHost.id = "googleSignInButton";
@@ -405,6 +458,7 @@ function renderAuthBar(){
       state.googleUser = decodeJwtPayload(state.idToken);
       if(!state.teacherEmail) state.teacherEmail = state.googleUser?.email || "";
       renderAuthBar();
+      await loadCurrentTeacher();
       await loadFromBackend();
     },
   });
@@ -477,28 +531,22 @@ function initClassPicker(){
   const classSelect = document.getElementById("classSelect");
   if(!classBtn || !classSelect) return;
 
-  // popular select
-  classSelect.innerHTML = "";
-  CLASSES.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c;
-    opt.textContent = c;
-    classSelect.appendChild(opt);
-  });
-  classSelect.value = state.className;
+  updateClassPickerOptions();
 
   const classLabel = document.getElementById("classLabel");
   if(classLabel) classLabel.textContent = `Turma: ${state.className}`;
 
-  // view mode: só mostra, não abre modal
   if(state.isViewMode) return;
 
-  classBtn.addEventListener("click", () => openModal("classModal"));
+  classBtn.addEventListener("click", () => {
+    if(getAvailableClasses().length <= 1) return;
+    openModal("classModal");
+  });
 
   document.getElementById("closeClassModal")?.addEventListener("click", () => closeModal("classModal"));
 
   document.getElementById("applyClass")?.addEventListener("click", async () => {
-    const selected = classSelect.value || CLASSES[0];
+    const selected = classSelect.value || getAvailableClasses()[0];
     await setClass(selected);
     closeModal("classModal");
   });
@@ -515,6 +563,7 @@ async function setClass(newClass){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
+    teacherEmail: state.teacherEmail,
   });
 
   // ✅ MUITO IMPORTANTE:
@@ -628,7 +677,6 @@ function initWeekArrows(){
 ========================= */
 
 function makeKey(){
-  // Teacher isolation is enforced by the backend using teacherEmail/idToken.
   return `${state.term}_${toISODate(state.weekStart)}_${sanitizeKeyPart(state.className)}`;
 }
 
@@ -643,6 +691,7 @@ function buildLessonPayload(){
     dateText: state.dateText,
     rows: state.rows,
     coordMessage: state.coordMessage,
+    isEnglishTeacher: state.isEnglishTeacher,
   };
 }
 
@@ -651,29 +700,28 @@ function applyLessonPayload(payload){
 
   state.term = payload.term || state.term;
   state.className = payload.className || state.className;
-  state.teacher = payload.teacher || state.teacher;
   state.teacherEmail = payload.teacherEmail || state.teacherEmail;
   state.weekLabel = payload.weekLabel || state.weekLabel;
   state.dateText = payload.dateText || state.dateText;
   state.rows = Array.isArray(payload.rows) ? payload.rows : state.rows;
   state.coordMessage = payload.coordMessage || "";
 
+  updateHeaderImage();
   hydrateUI();
 }
 
-async function loadFromBackend(key) {
+async function apiGet(action, params = {}) {
   if(GOOGLE_CLIENT_ID && !state.idToken) return null;
 
-  // JSONP avoids CORS issues with Google Apps Script web apps on GitHub Pages.
   const cb = "jsonp_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
-  const url =
-    GAS_URL +
-    "?action=get" +
-    "&key=" + encodeURIComponent(key || makeKey()) +
-    "&teacherEmail=" + encodeURIComponent(getUserEmail()) +
-    "&idToken=" + encodeURIComponent(state.idToken || "") +
-    "&callback=" + encodeURIComponent(cb) +
-    "&ts=" + Date.now(); // cache-bust
+  const url = new URL(GAS_URL);
+  url.searchParams.set("action", action);
+  url.searchParams.set("idToken", state.idToken || "");
+  url.searchParams.set("callback", cb);
+  url.searchParams.set("ts", Date.now());
+  Object.entries(params).forEach(([key, value]) => {
+    if(value !== undefined && value !== null) url.searchParams.set(key, value);
+  });
 
   return await new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -685,21 +733,33 @@ async function loadFromBackend(key) {
 
     window[cb] = (resp) => {
       cleanup();
-      if (resp && resp.ok) {
-        applyLessonPayload(resp.payload || null);
-        return resolve(resp.payload || null);
-      }
-      return reject(new Error((resp && resp.error) || "Backend error"));
+      if (resp && resp.ok) return resolve(resp.payload || null);
+      return reject(new Error((resp && resp.error) || "Erro no backend"));
     };
 
     script.onerror = () => {
       cleanup();
-      reject(new Error("Failed to load from backend (script error)."));
+      reject(new Error("Falha ao carregar dados do backend."));
     };
 
-    script.src = url;
+    script.src = url.toString();
     document.head.appendChild(script);
   });
+}
+
+async function loadCurrentTeacher(){
+  const profile = await apiGet("me", { teacherEmail: state.teacherEmail || "" });
+  applyTeacherProfile(profile);
+  return profile;
+}
+
+async function loadFromBackend(key) {
+  const payload = await apiGet("get", {
+    key: key || makeKey(),
+    teacherEmail: getUserEmail(),
+  });
+  applyLessonPayload(payload || null);
+  return payload || null;
 }
 
 
@@ -817,6 +877,7 @@ async function setWeek(mondayDate){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
+    teacherEmail: state.teacherEmail,
   });
 
   hydrateUI();
@@ -840,7 +901,7 @@ function initShare(){
     const viewLink =
       `${base}view.html?term=${encodeURIComponent(state.term)}&week=${encodeURIComponent(toISODate(state.weekStart))}&class=${encodeURIComponent(state.className)}&teacherEmail=${encodeURIComponent(getUserEmail())}`;
 
-    const msg = `Lesson Prep (somente leitura):\n${viewLink}`;
+    const msg = `Planejamento (somente leitura):\n${viewLink}`;
     const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
 
     // ✅ abre IMEDIATAMENTE (pra não ser bloqueado no mobile)
@@ -867,7 +928,7 @@ function applyQueryState(){
   const q = getQueryParams();
 
   state.term = q.term || state.term || "1";
-  state.className = q.class || state.className || CLASSES[0];
+  state.className = q.class || state.className || DEFAULT_CLASSES[0];
   if(q.teacherEmail) state.teacherEmail = q.teacherEmail;
 
   let w = q.week ? fromISODate(q.week) : defaultWeekIfNone();
@@ -886,6 +947,7 @@ function applyQueryState(){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
+    teacherEmail: state.teacherEmail,
   });
 }
 
@@ -919,6 +981,7 @@ async function init(){
   initToolbar();
   initToolbarAutoHide();
 
+  if(GOOGLE_CLIENT_ID && state.idToken) await loadCurrentTeacher();
 
   hydrateUI();
 

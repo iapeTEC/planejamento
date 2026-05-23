@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Lesson Prep</title>
+  <title>Planejamento</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -19,13 +19,13 @@
 
       <!-- ✅ DESKTOP: usa o seu header.png (sem overlay roxo) -->
       <div class="hero-bg">
-        <img class="hero-img" src="assets/header.png" alt="Header" onerror="this.style.display='none'">
+        <img class="hero-img" id="headerImage" src="assets/cabecalho.png" alt="Cabeçalho" onerror="this.style.display='none'">
       </div>
 
       <!-- ✅ MOBILE: mantém layout antigo com logos e bimestre clicável -->
       <div class="hero-content">
         <div class="brand-left">
-          <img src="assets/logo-left.png" alt="Logo Left" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>Educação<br/>Adventista</div>'">
+          <img src="assets/logo-left.png" alt="Logo esquerdo" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>Educação<br/>Adventista</div>'">
         </div>
 
         <div class="hero-center">
@@ -36,7 +36,7 @@
           <div class="meta">
             <div class="meta-line">
               <span class="meta-label">Professor:</span>
-              <span class="meta-value" contenteditable="true" id="teacherName">Bruno Agostinho</span>
+              <span class="meta-value" id="teacherName"></span>
             </div>
 
             <div class="meta-line">
@@ -48,7 +48,7 @@
         </div>
 
         <div class="brand-right">
-          <img src="assets/logo-right.png" alt="Logo Right" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>SKY<br/>ENGLISH</div>'">
+          <img src="assets/logo-right.png" alt="Logo direito" onerror="this.outerHTML='<div class=&quot;logo-fallback&quot;>Programa<br/>Escolar</div>'">
         </div>
       </div>
     </header>
@@ -69,14 +69,14 @@
 
   <div class="actions-right">
     <button class="btn btn-ghost" id="saveBtn" type="button">Salvar</button>
-    <button class="btn btn-primary" id="shareBtn" type="button">Compartilhar com o Advisor</button>
+    <button class="btn btn-primary" id="shareBtn" type="button">Compartilhar com a coordenação</button>
   </div>
 </div>
 
 
     <!-- TITLE -->
     <div class="title-row">
-  <div class="lesson-title">LESSON PREP</div>
+  <div class="lesson-title">PLANEJAMENTO</div>
 
   <button class="pill pill-week class-btn" id="classBtn" type="button">
     <span class="tick"></span>
@@ -99,7 +99,7 @@
 
         <thead>
           <tr>
-            <th>Unit, Day</th>
+            <th>Unidade, dia</th>
             <th>Conteúdo</th>
             <th>Desenvolvimento da aula</th>
             <th>Materiais para a aula</th>
@@ -113,9 +113,9 @@
 </section>
 
 
-    <!-- COORDINATION MESSAGE -->
+    <!-- MENSAGEM DA COORDENAÇÃO -->
     <section class="coord">
-      <div class="coord-label">COORDINATION MESSAGE:</div>
+      <div class="coord-label">MENSAGEM DA COORDENAÇÃO:</div>
       <div class="coord-box">
         <div class="coord-edit rich" contenteditable="true" id="coordMessage"></div>
       </div>

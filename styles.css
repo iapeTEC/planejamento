@@ -133,6 +133,16 @@ body{
   font:inherit;
 }
 
+.teacher-form .check-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.teacher-form .check-row input{
+  width:auto;
+}
+
 .panel-title-row{
   display:flex;
   align-items:center;
@@ -154,6 +164,14 @@ body{
   border:1px solid rgba(0,0,0,.1);
   border-radius:8px;
   padding:12px;
+}
+
+.teacher-card{
+  cursor:pointer;
+}
+
+.admin-layout .teachers-panel:last-child{
+  grid-column:2;
 }
 
 .teacher-card div{
@@ -195,6 +213,10 @@ body{
 
   .teacher-card{
     grid-template-columns:1fr;
+  }
+
+  .admin-layout .teachers-panel:last-child{
+    grid-column:auto;
   }
 }
 
