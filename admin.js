@@ -1,7 +1,8 @@
 const adminConfig = window.LESSON_PREP_CONFIG || {};
 const adminGasUrl = new URLSearchParams(window.location.search).get("gas") || adminConfig.gasUrl || "";
+const adminGoogleClientId = new URLSearchParams(window.location.search).get("client_id") || adminConfig.googleClientId || "";
 
-const ADMIN_CLASSES = ["Infantil 5", "1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano"];
+const ADMIN_CLASSES = ["Infantil 3", "Infantil 4", "Infantil 5", "1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano"];
 const MONTHS_PT_ADMIN = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -30,6 +31,8 @@ Regras:
 - Não invente datas ausentes. Se houver dúvida, não inclua o item.`;
 
 const adminState = {
+  idToken: sessionStorage.getItem("lessonPrepAdminIdToken") || "",
+  user: null,
   selectedTeacher: null,
   teachers: [],
   editingTeacher: null,
@@ -39,6 +42,15 @@ const adminState = {
   modalDate: "",
   pendingTeacherId: "",
 };
+
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload));
+  } catch (_) {
+    return null;
+  }
+}
 
 function escapeHtml(value) {
   return String(value || "")
@@ -72,12 +84,72 @@ function adminToast(text) {
   setTimeout(() => t.remove(), 1800);
 }
 
+function renderAdminAuth() {
+  const slot = document.getElementById("adminAuth");
+  if (!slot) return;
+  slot.innerHTML = "";
+
+  if (!adminGoogleClientId) {
+    document.body.classList.add("admin-locked");
+    slot.textContent = "Configure googleClientId no platform-config.js";
+    return;
+  }
+
+  if (adminState.user) {
+    document.body.classList.remove("admin-locked");
+    const box = document.createElement("div");
+    box.className = "signed-in-box";
+    box.innerHTML = `<strong>${escapeHtml(adminState.user.name || adminState.user.email)}</strong><span>${escapeHtml(adminState.user.email)}</span>`;
+    const out = document.createElement("button");
+    out.className = "btn btn-ghost";
+    out.type = "button";
+    out.textContent = "Sair";
+    out.addEventListener("click", () => {
+      sessionStorage.removeItem("lessonPrepAdminIdToken");
+      adminState.idToken = "";
+      adminState.user = null;
+      adminState.selectedTeacher = null;
+      adminState.editingTeacher = null;
+      if (adminState.teacherRefreshTimer) clearInterval(adminState.teacherRefreshTimer);
+      adminState.teacherRefreshTimer = null;
+      document.body.classList.add("admin-locked");
+      renderAdminAuth();
+      renderTeachers([]);
+      renderTeacherClasses(null);
+      setTeacherFormMode(null);
+      setTeacherLinkBox(null);
+    });
+    slot.append(box, out);
+    return;
+  }
+
+  const btn = document.createElement("div");
+  document.body.classList.add("admin-locked");
+  btn.id = "adminGoogleButton";
+  slot.appendChild(btn);
+  if (!window.google?.accounts?.id) return;
+  google.accounts.id.initialize({
+    client_id: adminGoogleClientId,
+    callback: async (response) => {
+      adminState.idToken = response.credential;
+      sessionStorage.setItem("lessonPrepAdminIdToken", adminState.idToken);
+      adminState.user = decodeJwtPayload(adminState.idToken);
+      renderAdminAuth();
+      await loadTeachers();
+      await loadCalendar();
+      startTeacherAutoRefresh();
+    },
+  });
+  google.accounts.id.renderButton(btn, { theme: "outline", size: "large" });
+}
+
 function apiGet(action, params = {}) {
   const cb = "admin_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
   const url = new URL(adminGasUrl);
   url.searchParams.set("action", action);
   url.searchParams.set("callback", cb);
   url.searchParams.set("ts", Date.now());
+  if (adminState.idToken) url.searchParams.set("idToken", adminState.idToken);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
   return new Promise((resolve, reject) => {
@@ -115,7 +187,7 @@ function apiPost(action, data) {
     form.target = iframeName;
     form.style.display = "none";
 
-    [["action", action], ["data", JSON.stringify(data || {})]].forEach(([name, value]) => {
+    [["action", action], ["idToken", adminState.idToken], ["data", JSON.stringify(data || {})]].forEach(([name, value]) => {
       const input = document.createElement("input");
       input.type = "hidden";
       input.name = name;
@@ -272,6 +344,7 @@ function selectTeacher(teacher) {
 }
 
 async function loadTeachers() {
+  if (!adminState.idToken) return;
   try {
     const wasEditing = Boolean(adminState.editingTeacher);
     const teachers = await apiGet("adminList");
@@ -417,6 +490,7 @@ function renderImports() {
 }
 
 async function loadCalendar() {
+  if (!adminState.idToken) return;
   try {
     adminState.calendarEvents = await apiGet("listCalendar") || [];
     renderCalendar();
@@ -500,11 +574,21 @@ function initAdminToolbar() {
 }
 
 function initAdmin() {
+  if (adminState.idToken) adminState.user = decodeJwtPayload(adminState.idToken);
   renderClassChecks();
-  loadTeachers();
-  loadCalendar();
-  startTeacherAutoRefresh();
   initAdminToolbar();
+
+  const wait = setInterval(() => {
+    if (!adminGoogleClientId || window.google?.accounts?.id) {
+      clearInterval(wait);
+      renderAdminAuth();
+      if (adminState.idToken) {
+        loadTeachers();
+        loadCalendar();
+        startTeacherAutoRefresh();
+      }
+    }
+  }, 100);
 
   document.getElementById("refreshTeachers")?.addEventListener("click", loadTeachers);
   document.getElementById("copyTeacherLink")?.addEventListener("click", () => {

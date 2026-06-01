@@ -4,7 +4,7 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbxBzqjv3T_5yXuyI2H4IP0TB-sWHnFkjSONcqO1_h0phmFh6fDHxEVyTKsd4HG40OXUyA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwKhONeOMgPsqNVT48BhjDhwouS5OCAgIUCqOSH-PTA1vElcFitcA9mcwZa8m-gg4vHtQ/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
@@ -26,6 +26,8 @@ const MONTHS_PT = [
 ];
 
 const DEFAULT_CLASSES = [
+  "Infantil 3",
+  "Infantil 4",
   "Infantil 5",
   "1º Ano",
   "2º Ano",

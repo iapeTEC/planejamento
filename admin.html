@@ -6,16 +6,20 @@
   <title>Coordenação - Planejamentos</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="platform-config.js"></script>
 </head>
-<body class="admin-mode">
+<body class="admin-mode admin-locked">
   <div class="admin-shell">
     <header class="admin-header">
       <div>
         <div class="admin-kicker">Planejamentos</div>
         <h1>Coordenação</h1>
       </div>
-      <button class="btn btn-ghost" id="refreshTeachers" type="button">Atualizar</button>
+      <div class="admin-header-actions">
+        <div id="adminAuth" class="auth-slot"></div>
+        <button class="btn btn-ghost" id="refreshTeachers" type="button">Atualizar</button>
+      </div>
     </header>
 
     <main class="admin-layout">
