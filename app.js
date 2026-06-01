@@ -4,13 +4,13 @@
 
 // Tenho que lembrar de mudar, caso necessario.
 // Cole aqui a URL do Web App do Google Apps Script (Deploy -> Web app)
-const API_URL = "https://script.google.com/macros/s/AKfycbzAYRQ5NSe5rtRYMDUl6pAD5qNufDCItCikd8p3nUhXYPnI9mdI6v-5AVo67mb3RW-W7A/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxBzqjv3T_5yXuyI2H4IP0TB-sWHnFkjSONcqO1_h0phmFh6fDHxEVyTKsd4HG40OXUyA/exec";
 const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
 const _qs = new URLSearchParams(window.location.search);
 const GAS_URL = _qs.get("gas") || window.GAS_URL || PLATFORM_CONFIG.gasUrl || API_URL;
-const GOOGLE_CLIENT_ID = _qs.get("client_id") || PLATFORM_CONFIG.googleClientId || "";
+const GOOGLE_CLIENT_ID = "";
 
 const WEEKDAYS = [
   { key: "SEG", label: "SEG" },
@@ -26,15 +26,12 @@ const MONTHS_PT = [
 ];
 
 const DEFAULT_CLASSES = [
-  "Infantil 3",
-  "Infantil 4",
   "Infantil 5",
-  "1 Ano",
-  "2 Ano",
-  "3 Ano",
-  "4 Ano",
-  "5 Ano",
-  "6 Ano",
+  "1º Ano",
+  "2º Ano",
+  "3º Ano",
+  "4º Ano",
+  "5º Ano",
 ];
 
 /* =========================
@@ -44,10 +41,12 @@ const state = {
   term: "",
   className: "", // ✅ NOVO
   teacher: "",
+  teacherId: "",
   teacherEmail: "",
   allowedClasses: [],
   isEnglishTeacher: false,
   teacherProfileLoaded: false,
+  calendarEvents: [],
   weekStart: null, // Date object (Mon)
   weekLabel: "(26 a 30 de Janeiro)",
   dateText: "",
@@ -148,7 +147,11 @@ function decodeJwtPayload(token){
 }
 
 function getUserEmail(){
-  return (state.teacherEmail || state.googleUser?.email || "").toLowerCase();
+  return getTeacherId();
+}
+
+function getTeacherId(){
+  return String(state.teacherId || state.teacherEmail || "").trim().toLowerCase();
 }
 
 function splitClasses(value){
@@ -160,7 +163,6 @@ function splitClasses(value){
 
 function getAvailableClasses(){
   if(state.allowedClasses.length) return state.allowedClasses;
-  if(GOOGLE_CLIENT_ID) return [];
   return DEFAULT_CLASSES;
 }
 
@@ -178,6 +180,7 @@ function applyTeacherProfile(profile){
   if(!teacher) throw new Error("Professor não cadastrado.");
 
   state.teacherEmail = teacher.email || state.teacherEmail;
+  state.teacherId = teacher.teacherId || teacher.email || state.teacherId;
   state.teacher = teacher.name || state.teacher || teacher.email || "";
   state.allowedClasses = splitClasses(teacher.classes);
   state.isEnglishTeacher = Boolean(teacher.isEnglishTeacher);
@@ -196,7 +199,7 @@ function applyTeacherProfile(profile){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
-    teacherEmail: state.teacherEmail,
+    teacherId: state.teacherId,
   });
 
   updateHeaderImage();
@@ -248,9 +251,87 @@ function buildInitialRows(weekStart){
       conteudo: "",
       desenvolvimento: "",
       materiais: "",
+      localRecess: false,
+      observations: {},
     };
   });
   return rows;
+}
+
+function normalizeRow(row){
+  return {
+    date: row.date || "",
+    weekday: row.weekday || "",
+    dayNum: row.dayNum || "",
+    unitDay: row.unitDay || "",
+    conteudo: row.conteudo || "",
+    desenvolvimento: row.desenvolvimento || "",
+    materiais: row.materiais || "",
+    localRecess: Boolean(row.localRecess),
+    observations: row.observations && typeof row.observations === "object" ? row.observations : {},
+  };
+}
+
+function lessonFields(){
+  return ["unitDay", "conteudo", "desenvolvimento", "materiais"];
+}
+
+function eventsForDate(date){
+  return state.calendarEvents.filter((event) => event.date === date);
+}
+
+function fixedEventsForDate(date){
+  return eventsForDate(date).filter((event) => !event.isObservation);
+}
+
+function observationEventsForDate(date){
+  return eventsForDate(date).filter((event) => event.isObservation);
+}
+
+function isFixedRow(row){
+  return Boolean(row.localRecess) || fixedEventsForDate(row.date).length > 0;
+}
+
+function toggleLocalRecess(index){
+  if(state.isViewMode) return;
+  const row = state.rows[index];
+  if(!row) return;
+  row.localRecess = !row.localRecess;
+  if(row.localRecess){
+    lessonFields().forEach((field) => row[field] = "");
+    row.conteudo = "Recesso";
+  }else if(row.conteudo === "Recesso"){
+    row.conteudo = "";
+  }
+  hydrateUI();
+  saveToBackend({ silent: true });
+}
+
+function movePlanning(direction){
+  const movable = state.rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => !isFixedRow(row));
+
+  if(movable.length < 2){
+    toast("Não há dias livres suficientes para mover.");
+    return;
+  }
+
+  const snapshots = movable.map(({ row }) => {
+    const copy = {};
+    lessonFields().forEach((field) => copy[field] = row[field] || "");
+    return copy;
+  });
+
+  movable.forEach(({ row }, position) => {
+    const source = direction > 0
+      ? (position - 1 + snapshots.length) % snapshots.length
+      : (position + 1) % snapshots.length;
+    lessonFields().forEach((field) => row[field] = snapshots[source][field]);
+  });
+
+  hydrateUI();
+  saveToBackend({ silent: true });
 }
 
 function renderRows(){
@@ -261,14 +342,20 @@ function renderRows(){
 
   state.rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
+    const fixedEvents = fixedEventsForDate(r.date);
+    const observationEvents = observationEventsForDate(r.date);
+    const rowFixed = isFixedRow(r);
+    if(rowFixed) tr.classList.add("row-recess");
 
     // ✅ COL 1: Unit, Day
     const tdUnit = document.createElement("td");
     tdUnit.className = "td-unit";
 
-    const badge = document.createElement("div");
+    const badge = document.createElement("button");
+    badge.type = "button";
     badge.className = "day-badge";
-    badge.setAttribute("aria-hidden","true");
+    badge.title = "Marcar/desmarcar recesso";
+    if(!state.isViewMode) badge.addEventListener("click", () => toggleLocalRecess(idx));
 
     const dayNum = document.createElement("div");
     dayNum.className = "dayNum";
@@ -286,19 +373,46 @@ function renderRows(){
     unitText.dataset.field = "unitDay";
     unitText.dataset.index = idx;
     unitText.innerHTML = r.unitDay || "";
-    if(!state.isViewMode) unitText.contentEditable = "true";
+    if(!state.isViewMode && !rowFixed) unitText.contentEditable = "true";
 
     tdUnit.appendChild(badge);
     tdUnit.appendChild(unitText);
 
     // ✅ COL 2
     const td2 = document.createElement("td");
+    if(fixedEvents.length || observationEvents.length){
+      const eventsBox = document.createElement("div");
+      eventsBox.className = "row-events";
+      fixedEvents.forEach((event) => {
+        const eventEl = document.createElement("div");
+        eventEl.className = "row-event row-event-fixed";
+        eventEl.style.backgroundColor = event.color || "#dff4df";
+        eventEl.innerHTML = `<strong>${event.title || ""}</strong><div>${event.html || ""}</div>`;
+        eventsBox.appendChild(eventEl);
+      });
+      observationEvents.forEach((event) => {
+        const eventEl = document.createElement("div");
+        eventEl.className = "row-event row-event-observation";
+        eventEl.style.backgroundColor = event.color || "#fff4c2";
+        const current = r.observations?.[event.eventId] || event.html || event.title || "";
+        eventEl.innerHTML = `<strong>${event.title || ""}</strong>`;
+        const editable = document.createElement("div");
+        editable.className = "rich observation-rich";
+        editable.dataset.index = idx;
+        editable.dataset.observationId = event.eventId;
+        editable.innerHTML = current;
+        if(!state.isViewMode) editable.contentEditable = "true";
+        eventEl.appendChild(editable);
+        eventsBox.appendChild(eventEl);
+      });
+      td2.appendChild(eventsBox);
+    }
     const conteudo = document.createElement("div");
     conteudo.className = "rich";
     conteudo.dataset.field = "conteudo";
     conteudo.dataset.index = idx;
     conteudo.innerHTML = r.conteudo || "";
-    if(!state.isViewMode) conteudo.contentEditable = "true";
+    if(!state.isViewMode && !rowFixed) conteudo.contentEditable = "true";
     td2.appendChild(conteudo);
 
     // ✅ COL 3
@@ -308,7 +422,7 @@ function renderRows(){
     des.dataset.field = "desenvolvimento";
     des.dataset.index = idx;
     des.innerHTML = r.desenvolvimento || "";
-    if(!state.isViewMode) des.contentEditable = "true";
+    if(!state.isViewMode && !rowFixed) des.contentEditable = "true";
     td3.appendChild(des);
 
     // ✅ COL 4
@@ -318,7 +432,7 @@ function renderRows(){
     mat.dataset.field = "materiais";
     mat.dataset.index = idx;
     mat.innerHTML = r.materiais || "";
-    if(!state.isViewMode) mat.contentEditable = "true";
+    if(!state.isViewMode && !rowFixed) mat.contentEditable = "true";
     td4.appendChild(mat);
 
     tr.appendChild(tdUnit);
@@ -351,6 +465,22 @@ function hookEditListeners(){
     });
 
     // ✅ mostra sempre no focus
+    el.addEventListener("focus", () => showToolbar());
+    el.addEventListener("blur", () => saveToBackend({ silent: true }));
+  });
+
+  document.querySelectorAll(".observation-rich[contenteditable='true']").forEach(el => {
+    if(el.dataset.editBound === "true") return;
+    el.dataset.editBound = "true";
+
+    el.addEventListener("input", () => {
+      const idx = Number(el.dataset.index);
+      const eventId = el.dataset.observationId;
+      if(Number.isFinite(idx) && eventId){
+        if(!state.rows[idx].observations) state.rows[idx].observations = {};
+        state.rows[idx].observations[eventId] = el.innerHTML;
+      }
+    });
     el.addEventListener("focus", () => showToolbar());
     el.addEventListener("blur", () => saveToBackend({ silent: true }));
   });
@@ -429,93 +559,13 @@ function initToolbar(){
 function renderAuthBar(){
   const authBar = document.getElementById("authBar");
   if(!authBar) return;
-
   authBar.innerHTML = "";
-
-  if(!GOOGLE_CLIENT_ID){
-    authBar.innerHTML = `
-      <div class="auth-status">
-        <strong>Login do Google não configurado.</strong>
-        <span>Configure googleClientId no platform-config.js para ativar o acesso privado.</span>
-      </div>
-    `;
-    document.body.classList.remove("app-locked");
-    state.authReady = true;
-    return;
-  }
-
-  if(state.googleUser){
-    const status = document.createElement("div");
-    status.className = "auth-status";
-    status.innerHTML = `<strong>${state.googleUser.name || state.googleUser.email}</strong><span>${state.googleUser.email}</span>`;
-
-    const signOut = document.createElement("button");
-    signOut.className = "btn btn-ghost";
-    signOut.type = "button";
-    signOut.textContent = "Sair";
-    signOut.addEventListener("click", () => {
-      sessionStorage.removeItem("lessonPrepIdToken");
-      state.idToken = "";
-      state.googleUser = null;
-      state.authReady = false;
-      document.body.classList.add("app-locked");
-      renderAuthBar();
-    });
-
-    authBar.append(status, signOut);
-    document.body.classList.remove("app-locked");
-    state.authReady = true;
-    return;
-  }
-
-  document.body.classList.add("app-locked");
-
-  const status = document.createElement("div");
-  status.className = "auth-status";
-  status.innerHTML = `<strong>Entrar com Google</strong><span>Use o Gmail cadastrado para acessar seu planejamento.</span>`;
-
-  const buttonHost = document.createElement("div");
-  buttonHost.id = "googleSignInButton";
-  authBar.append(status, buttonHost);
-
-  if(!window.google?.accounts?.id) return;
-
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: async (response) => {
-      try{
-        state.idToken = response.credential;
-        sessionStorage.setItem("lessonPrepIdToken", state.idToken);
-        state.googleUser = decodeJwtPayload(state.idToken);
-        if(!state.teacherEmail) state.teacherEmail = state.googleUser?.email || "";
-        renderAuthBar();
-        await loadCurrentTeacher();
-        await loadFromBackend();
-      }catch(err){
-        toast(err.message || "Erro ao carregar cadastro do professor.");
-      }
-    },
-  });
-  google.accounts.id.renderButton(buttonHost, { theme: "outline", size: "large" });
+  document.body.classList.remove("app-locked");
+  state.authReady = true;
 }
 
 function initAuth(){
-  if(state.idToken){
-    state.googleUser = decodeJwtPayload(state.idToken);
-    if(!state.teacherEmail) state.teacherEmail = state.googleUser?.email || "";
-  }
-
-  if(!GOOGLE_CLIENT_ID){
-    renderAuthBar();
-    return;
-  }
-
-  const wait = setInterval(() => {
-    if(window.google?.accounts?.id){
-      clearInterval(wait);
-      renderAuthBar();
-    }
-  }, 100);
+  renderAuthBar();
 }
 
 
@@ -612,7 +662,7 @@ async function setClass(newClass){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
-    teacherEmail: state.teacherEmail,
+    teacherId: state.teacherId,
   });
 
   // ✅ MUITO IMPORTANTE:
@@ -692,19 +742,20 @@ function initWeekPicker(){
 function initTermPicker(){
   const termBtn = document.getElementById("termBtn");
   const termModal = document.getElementById("termModal");
-  const termSelect = document.getElementById("termSelect");
 
-  if(!termBtn || !termModal || !termSelect) return;
+  if(!termBtn || !termModal) return;
   if(state.isViewMode) return;
 
   termBtn.addEventListener("click", () => openModal("termModal"));
   document.getElementById("closeTermModal")?.addEventListener("click", () => closeModal("termModal"));
 
-  document.getElementById("applyTerm")?.addEventListener("click", async () => {
-    state.term = termSelect.value;
-    document.getElementById("termLabel").textContent = `${state.term}º Bimestre - LIVRO/TURMA`;
-    setQueryParams({ term: state.term, class: state.className, week: toISODate(state.weekStart) });
-    await loadFromBackend();
+  document.getElementById("shiftForward")?.addEventListener("click", () => {
+    movePlanning(1);
+    closeModal("termModal");
+  });
+
+  document.getElementById("shiftBackward")?.addEventListener("click", () => {
+    movePlanning(-1);
     closeModal("termModal");
   });
 }
@@ -738,7 +789,7 @@ function initWeekArrows(){
 ========================= */
 
 function makeKey(){
-  return `${state.term}_${toISODate(state.weekStart)}_${sanitizeKeyPart(state.className)}`;
+  return `${toISODate(state.weekStart)}_${sanitizeKeyPart(state.className)}`;
 }
 
 function buildLessonPayload(){
@@ -746,7 +797,8 @@ function buildLessonPayload(){
     term: state.term,
     className: state.className,
     teacher: state.teacher,
-    teacherEmail: getUserEmail(),
+    teacherId: getTeacherId(),
+    teacherEmail: getTeacherId(),
     weekStart: toISODate(state.weekStart),
     weekLabel: state.weekLabel,
     dateText: state.dateText,
@@ -761,11 +813,12 @@ function applyLessonPayload(payload){
 
   state.term = payload.term || state.term;
   state.className = payload.className || state.className;
-  state.teacherEmail = payload.teacherEmail || state.teacherEmail;
+  state.teacherId = payload.teacherId || payload.teacherEmail || state.teacherId;
+  state.teacherEmail = state.teacherId;
   state.isEnglishTeacher = Boolean(state.isEnglishTeacher);
   state.weekLabel = payload.weekLabel || state.weekLabel;
   state.dateText = payload.dateText || state.dateText;
-  state.rows = Array.isArray(payload.rows) ? payload.rows : state.rows;
+  state.rows = Array.isArray(payload.rows) ? payload.rows.map(normalizeRow) : state.rows;
   state.coordMessage = payload.coordMessage || "";
 
   updateHeaderImage();
@@ -773,12 +826,9 @@ function applyLessonPayload(payload){
 }
 
 async function apiGet(action, params = {}) {
-  if(GOOGLE_CLIENT_ID && !state.idToken) return null;
-
   const cb = "jsonp_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
   const url = new URL(GAS_URL);
   url.searchParams.set("action", action);
-  url.searchParams.set("idToken", state.idToken || "");
   url.searchParams.set("callback", cb);
   url.searchParams.set("ts", Date.now());
   Object.entries(params).forEach(([key, value]) => {
@@ -810,15 +860,30 @@ async function apiGet(action, params = {}) {
 }
 
 async function loadCurrentTeacher(){
-  const profile = await apiGet("me", { teacherEmail: state.teacherEmail || "" });
+  const profile = await apiGet("getTeacher", { teacherId: getTeacherId() });
   applyTeacherProfile(profile);
   return profile;
 }
 
+async function loadCalendarEvents(){
+  try{
+    state.calendarEvents = await apiGet("listCalendar") || [];
+    hydrateUI();
+  }catch(err){
+    state.calendarEvents = [];
+    toast(err.message || "Erro ao carregar calendário.");
+  }
+}
+
+function startCalendarAutoRefresh(){
+  setInterval(loadCalendarEvents, 60000);
+}
+
 async function loadFromBackend(key) {
+  if(!getTeacherId() || !state.className) return null;
   const payload = await apiGet("get", {
     key: key || makeKey(),
-    teacherEmail: getUserEmail(),
+    teacherId: getTeacherId(),
   });
   applyLessonPayload(payload || null);
   return payload || null;
@@ -826,14 +891,14 @@ async function loadFromBackend(key) {
 
 
 function saveToBackend(options = {}) {
-  if(GOOGLE_CLIENT_ID && !state.idToken){
-    if(!options.silent) toast("Faça login com Google antes de salvar.");
+  if(!getTeacherId() || !state.className){
+    if(!options.silent) toast("Link do professor inválido.");
     return Promise.resolve();
   }
 
   const payload = {
     key: makeKey(),
-    teacherEmail: getUserEmail(),
+    teacherId: getTeacherId(),
     payload: buildLessonPayload(),
   };
 
@@ -860,11 +925,6 @@ function saveToBackend(options = {}) {
     inAction.name = "action";
     inAction.value = "save";
 
-    const inToken = document.createElement("input");
-    inToken.type = "hidden";
-    inToken.name = "idToken";
-    inToken.value = state.idToken || "";
-
     const inData = document.createElement("input");
     inData.type = "hidden";
     inData.name = "data";
@@ -876,7 +936,6 @@ function saveToBackend(options = {}) {
     inTs.value = String(Date.now());
 
     form.appendChild(inAction);
-    form.appendChild(inToken);
     form.appendChild(inData);
     form.appendChild(inTs);
 
@@ -906,7 +965,7 @@ function hydrateUI(){
   const coordMessage = document.getElementById("coordMessage");
   const termLabel = document.getElementById("termLabel");
 
-  if(termLabel) termLabel.textContent = `${state.term}º Bimestre - LIVRO/TURMA`;
+  if(termLabel) termLabel.textContent = "Mover planejamento";
   if(weekLabel) weekLabel.textContent = state.weekLabel;
   if(dateField) dateField.innerText = state.dateText;
   if(teacherName) teacherName.innerText = state.teacher;
@@ -939,7 +998,7 @@ async function setWeek(mondayDate){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
-    teacherEmail: state.teacherEmail,
+    teacherId: state.teacherId,
   });
 
   hydrateUI();
@@ -961,7 +1020,7 @@ function initShare(){
       .replace(/\/$/,"/");
 
     const viewLink =
-      `${base}view.html?term=${encodeURIComponent(state.term)}&week=${encodeURIComponent(toISODate(state.weekStart))}&class=${encodeURIComponent(state.className)}&teacherEmail=${encodeURIComponent(getUserEmail())}`;
+      `${base}view.html?week=${encodeURIComponent(toISODate(state.weekStart))}&class=${encodeURIComponent(state.className)}&teacherId=${encodeURIComponent(getTeacherId())}`;
 
     const msg = `Planejamento (somente leitura):\n${viewLink}`;
     const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
@@ -991,7 +1050,10 @@ function applyQueryState(){
 
   state.term = q.term || state.term || "1";
   state.className = q.class || state.className || "";
-  if(q.teacherEmail) state.teacherEmail = q.teacherEmail;
+  if(q.teacherId || q.teacherEmail) {
+    state.teacherId = q.teacherId || q.teacherEmail;
+    state.teacherEmail = state.teacherId;
+  }
 
   let w = q.week ? fromISODate(q.week) : defaultWeekIfNone();
   state.weekStart = mondayOf(w);
@@ -1009,7 +1071,7 @@ function applyQueryState(){
     term: state.term,
     week: toISODate(state.weekStart),
     class: state.className,
-    teacherEmail: state.teacherEmail,
+    teacherId: state.teacherId,
   });
 }
 
@@ -1043,12 +1105,17 @@ async function init(){
   initToolbar();
   initToolbarAutoHide();
 
-  if(GOOGLE_CLIENT_ID && state.idToken) {
+  await loadCalendarEvents();
+  startCalendarAutoRefresh();
+
+  if(getTeacherId()) {
     try{
       await loadCurrentTeacher();
     }catch(err){
       toast(err.message || "Erro ao carregar cadastro do professor.");
     }
+  }else{
+    toast("Abra pelo link enviado pela coordenação.");
   }
 
   hydrateUI();
@@ -1065,7 +1132,7 @@ async function init(){
     saveBtn.addEventListener("click", saveToBackend);
   }
 
-  if(!GOOGLE_CLIENT_ID || state.idToken) await loadFromBackend();
+  await loadFromBackend();
 }
 
 init();

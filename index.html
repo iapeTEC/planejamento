@@ -6,7 +6,6 @@
   <title>Planejamento</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="platform-config.js"></script>
 </head>
 
@@ -30,7 +29,7 @@
 
         <div class="hero-center">
           <button class="pill pill-primary" id="termBtn" type="button">
-            <span id="termLabel">1º Bimestre - LIVRO/TURMA</span>
+            <span id="termLabel">Mover planejamento</span>
           </button>
 
           <div class="meta">
@@ -162,24 +161,19 @@
     </div>
   </div>
 
-  <!-- MODAL TERM -->
+  <!-- MODAL SHIFT -->
   <div class="modal" id="termModal" aria-hidden="true">
     <div class="modal-card">
-      <div class="modal-title">Selecionar bimestre</div>
+      <div class="modal-title">Mover planejamento</div>
 
-      <div class="modal-grid">
-        <label class="mlabel">Bimestre</label>
-        <select id="termSelect" class="mselect">
-          <option value="1">1º Bimestre - LIVRO/TURMA</option>
-          <option value="2">2º Bimestre - LIVRO/TURMA</option>
-          <option value="3">3º Bimestre - LIVRO/TURMA</option>
-          <option value="4">4º Bimestre - LIVRO/TURMA</option>
-        </select>
+      <div class="modal-copy">
+        Dias de recesso e eventos fixos da coordenação ficam parados. As aulas giram apenas entre dias livres.
       </div>
 
       <div class="modal-actions">
         <button class="btn btn-ghost" id="closeTermModal" type="button">Cancelar</button>
-        <button class="btn btn-primary" id="applyTerm" type="button">Aplicar</button>
+        <button class="btn btn-ghost" id="shiftBackward" type="button">Puxar para trás</button>
+        <button class="btn btn-primary" id="shiftForward" type="button">Empurrar para frente</button>
       </div>
     </div>
   </div>

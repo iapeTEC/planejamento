@@ -6,7 +6,6 @@
   <title>Coordenação - Planejamentos</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="platform-config.js"></script>
 </head>
 <body class="admin-mode">
@@ -16,7 +15,7 @@
         <div class="admin-kicker">Planejamentos</div>
         <h1>Coordenação</h1>
       </div>
-      <div id="adminAuth" class="auth-slot"></div>
+      <button class="btn btn-ghost" id="refreshTeachers" type="button">Atualizar</button>
     </header>
 
     <main class="admin-layout">
@@ -27,30 +26,35 @@
             Nome
             <input id="teacherNameInput" type="text" autocomplete="name" required>
           </label>
-          <label>
-            Gmail
-            <input id="teacherEmailInput" type="email" autocomplete="email" required>
-          </label>
-          <label>
-            Turmas
-            <input id="teacherClassesInput" type="text" placeholder="Infantil 3, 4º Ano, 6º Ano">
-          </label>
+
+          <div class="field-label">Turmas</div>
+          <div id="teacherClassesInput" class="class-check-grid"></div>
+
           <label class="check-row">
             <input id="teacherEnglishInput" type="checkbox">
             Professora/professor de inglês
           </label>
+
           <div class="form-actions">
             <button class="btn btn-primary" id="saveTeacherBtn" type="submit">Cadastrar professor</button>
             <button class="btn btn-ghost" id="cancelTeacherEdit" type="button" hidden>Cancelar</button>
           </div>
           <button class="btn btn-danger" id="deleteTeacherBtn" type="button" hidden>Deletar professor</button>
         </form>
+
+        <div class="teacher-link-box" id="teacherLinkBox" hidden>
+          <span>Link do professor</span>
+          <input id="teacherLinkInput" type="text" readonly>
+          <div class="form-actions">
+            <button class="btn btn-ghost" id="copyTeacherLink" type="button">Copiar link</button>
+            <a class="btn btn-primary" id="whatsTeacherLink" href="#" target="_blank" rel="noreferrer">Enviar WhatsApp</a>
+          </div>
+        </div>
       </section>
 
       <section class="admin-panel teachers-panel">
         <div class="panel-title-row">
           <h2>Professores cadastrados</h2>
-          <button class="btn btn-ghost" id="refreshTeachers" type="button">Atualizar</button>
         </div>
         <div id="teachersList" class="teachers-list"></div>
       </section>
@@ -60,10 +64,64 @@
           <h2 id="lessonsTitle">Turmas</h2>
         </div>
         <div id="lessonsList" class="teachers-list">
-          <div class="empty-state">Selecione um professor para ver as turmas.</div>
+          <div class="empty-state">Selecione um professor para ver as turmas e copiar o link.</div>
         </div>
       </section>
+
+      <section class="admin-panel calendar-panel">
+        <div class="panel-title-row">
+          <h2>Calendário geral</h2>
+          <div class="calendar-actions">
+            <button class="btn btn-ghost" id="prevCalendarMonth" type="button">‹</button>
+            <strong id="calendarMonthLabel"></strong>
+            <button class="btn btn-ghost" id="nextCalendarMonth" type="button">›</button>
+          </div>
+        </div>
+        <div id="adminCalendar" class="admin-calendar"></div>
+      </section>
+
+      <section class="admin-panel import-panel">
+        <h2>Importar de uma IA</h2>
+        <textarea id="importText" class="import-textarea" placeholder="Cole aqui o JSON gerado pela IA."></textarea>
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="copyImportPrompt" type="button">Copiar prompt</button>
+          <button class="btn btn-primary" id="importDates" type="button">Importar datas</button>
+        </div>
+        <div id="importsList" class="imports-list"></div>
+      </section>
     </main>
+  </div>
+
+  <div class="modal" id="calendarEventModal" aria-hidden="true">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-title" id="calendarModalTitle">Adicionar item</div>
+      <div class="modal-grid">
+        <label class="mlabel">Título</label>
+        <input id="eventTitleInput" class="mselect" type="text">
+
+        <label class="mlabel">Cor</label>
+        <input id="eventColorInput" class="mselect color-input" type="color" value="#dff4df">
+
+        <label class="check-row modal-check">
+          <input id="eventObservationInput" type="checkbox">
+          Observação editável pelo professor
+        </label>
+      </div>
+
+      <div class="admin-editor-toolbar">
+        <button class="tbtn" data-admin-cmd="bold" title="Negrito"><b>B</b></button>
+        <button class="tbtn" data-admin-cmd="italic" title="Itálico"><i>I</i></button>
+        <button class="tbtn" data-admin-cmd="underline" title="Sublinhado"><u>U</u></button>
+        <button class="tbtn" data-admin-cmd="insertUnorderedList" title="Marcadores">•</button>
+        <button class="tbtn" data-admin-cmd="insertOrderedList" title="Numeração">1.</button>
+      </div>
+      <div id="eventHtmlInput" class="admin-rich-editor rich" contenteditable="true"></div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="closeCalendarEventModal" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="saveCalendarEvent" type="button">Salvar</button>
+      </div>
+    </div>
   </div>
 
   <script src="admin.js"></script>

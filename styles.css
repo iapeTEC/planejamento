@@ -133,6 +133,33 @@ body{
   font:inherit;
 }
 
+.field-label{
+  font-weight:800;
+  font-size:13px;
+}
+
+.class-check-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+
+.class-check{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:8px;
+  padding:9px;
+  font-weight:800;
+  font-size:13px;
+  background:#fafafa;
+}
+
+.class-check input{
+  width:auto;
+}
+
 .teacher-form .check-row{
   display:flex;
   align-items:center;
@@ -147,6 +174,30 @@ body{
   display:flex;
   gap:10px;
   flex-wrap:wrap;
+}
+
+.teacher-link-box{
+  margin-top:16px;
+  display:grid;
+  gap:8px;
+  border-top:1px solid rgba(0,0,0,.1);
+  padding-top:14px;
+}
+
+.teacher-link-box span{
+  font-size:13px;
+  font-weight:900;
+  color:var(--navy);
+}
+
+.teacher-link-box input,
+.import-textarea,
+.admin-rich-editor{
+  width:100%;
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:8px;
+  padding:11px 12px;
+  font:inherit;
 }
 
 .panel-title-row{
@@ -183,6 +234,126 @@ body{
 
 .admin-layout .teachers-panel:last-child{
   grid-column:2;
+}
+
+.calendar-panel,
+.import-panel{
+  grid-column:1 / -1;
+}
+
+.calendar-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.admin-calendar{
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0, 1fr));
+  gap:6px;
+}
+
+.calendar-weekday{
+  color:var(--navy);
+  font-size:12px;
+  font-weight:900;
+  text-align:center;
+  padding:4px;
+}
+
+.calendar-day{
+  min-height:118px;
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:8px;
+  background:#fff;
+  text-align:left;
+  padding:8px;
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.calendar-day.muted{
+  opacity:.45;
+  background:#f8f8f8;
+}
+
+.calendar-event-list{
+  display:grid;
+  gap:4px;
+}
+
+.calendar-event-chip{
+  display:block;
+  border-radius:6px;
+  padding:5px 6px;
+  font-size:12px;
+  line-height:1.2;
+  color:#172242;
+}
+
+.calendar-event-chip em{
+  float:right;
+  font-style:normal;
+  font-weight:900;
+  color:#b3261e;
+  margin-left:6px;
+}
+
+.import-textarea{
+  min-height:150px;
+  resize:vertical;
+  margin:12px 0;
+}
+
+.imports-list{
+  display:grid;
+  gap:6px;
+  margin-top:12px;
+}
+
+.import-row{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border-radius:8px;
+  background:#f7f7f7;
+}
+
+.import-row:nth-child(even){
+  background:#fff7f0;
+}
+
+.modal-card-wide{
+  max-width:720px;
+}
+
+.modal-copy{
+  color:#555;
+  font-size:13px;
+  line-height:1.35;
+  margin:12px 0;
+}
+
+.modal-check{
+  margin-top:4px;
+}
+
+.color-input{
+  min-height:44px;
+}
+
+.admin-editor-toolbar{
+  display:flex;
+  gap:6px;
+  margin:12px 0 8px;
+}
+
+.admin-rich-editor{
+  min-height:150px;
 }
 
 .teacher-card div{
@@ -557,12 +728,20 @@ body{
   top: 0;
   height:100%;
   width: 86px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  cursor:pointer;
   display:flex;
   gap:6px;
   align-items:stretch;
   padding:8px 0;
-  pointer-events:none;
   z-index: 100;      /* acima de tudo */
+}
+
+.day-badge:focus-visible{
+  outline:3px solid rgba(226,119,42,.45);
+  outline-offset:2px;
 }
 
 /* ✅ menorzinho */
@@ -608,6 +787,42 @@ body{
 
 .rich:focus{
   box-shadow: inset 0 0 0 3px rgba(90,43,134,.18);
+}
+
+.row-recess td{
+  background:#eef9ec;
+}
+
+.row-recess .rich:not(.observation-rich){
+  color:#27632a;
+  font-weight:800;
+}
+
+.row-events{
+  display:grid;
+  gap:6px;
+  padding:8px 8px 0;
+}
+
+.row-event{
+  border-radius:8px;
+  padding:8px;
+  font-size:12px;
+  line-height:1.25;
+  color:#172242;
+  border:1px solid rgba(0,0,0,.08);
+}
+
+.row-event strong{
+  display:block;
+  margin-bottom:4px;
+}
+
+.observation-rich{
+  min-height:42px;
+  padding:6px;
+  background:rgba(255,255,255,.65);
+  border-radius:6px;
 }
 
 /* =========================
