@@ -559,23 +559,6 @@ function renderGeneralRows(){
   week.className = "general-week";
   week.style.setProperty("--general-cols", state.generalColumnWidths.map((width) => `${width}%`).join(" "));
 
-  const header = document.createElement("div");
-  header.className = "general-header";
-  GENERAL_COLUMNS.forEach((column, index) => {
-    const cell = document.createElement("div");
-    cell.className = "general-th";
-    cell.textContent = column.label;
-    if(index < GENERAL_COLUMNS.length - 1 && !state.isViewMode){
-      const handle = document.createElement("span");
-      handle.className = "col-resizer";
-      handle.dataset.index = index;
-      handle.setAttribute("aria-hidden", "true");
-      cell.appendChild(handle);
-    }
-    header.appendChild(cell);
-  });
-  week.appendChild(header);
-
   WEEKDAYS.forEach((weekday, dayOffset) => {
     const dayRows = state.rows.filter((row) => row.weekday === weekday.label);
     if(!dayRows.length) return;
@@ -604,6 +587,24 @@ function renderGeneralRows(){
 
     const body = document.createElement("div");
     body.className = "general-day-rows";
+
+    const header = document.createElement("div");
+    header.className = "general-header";
+    GENERAL_COLUMNS.forEach((column, index) => {
+      const cell = document.createElement("div");
+      cell.className = "general-th";
+      cell.textContent = column.label;
+      if(index < GENERAL_COLUMNS.length - 1 && !state.isViewMode){
+        const handle = document.createElement("span");
+        handle.className = "col-resizer";
+        handle.dataset.index = index;
+        handle.setAttribute("aria-hidden", "true");
+        cell.appendChild(handle);
+      }
+      header.appendChild(cell);
+    });
+    body.appendChild(header);
+
     dayRows.slice(0, GENERAL_ROWS_PER_DAY).forEach((row) => {
       const idx = state.rows.indexOf(row);
       const fixedEvents = fixedEventsForDate(row.date);
