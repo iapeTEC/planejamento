@@ -838,6 +838,146 @@ body{
 }
 
 /* =========================
+   NON-ENGLISH TEACHERS
+========================= */
+.non-english .page{
+  width:calc(100% - 32px);
+  max-width:1880px;
+}
+
+.non-english .hero-content,
+.non-english .top-actions,
+.non-english .title-row{
+  flex-wrap:wrap;
+}
+
+.non-english .sheet-wrap{
+  padding:0 14px 14px 104px;
+  overflow-x:clip;
+}
+
+.non-english .sheet,
+.non-english .sheet-inner,
+.non-english .general-week{
+  width:100%;
+  max-width:100%;
+}
+
+.non-english .general-week{
+  --general-cols: 22% 19.5% 24.5% 19.5% 14.5%;
+}
+
+.non-english .general-header,
+.non-english .general-row{
+  display:grid;
+  grid-template-columns:var(--general-cols);
+}
+
+.non-english .general-header{
+  border-top-left-radius:16px;
+  border-top-right-radius:16px;
+  overflow:hidden;
+}
+
+.non-english .general-th{
+  position:relative;
+  min-width:0;
+  background:var(--orange);
+  border-right:2px solid var(--grid);
+  border-bottom:2px solid var(--grid);
+  padding:8px 10px;
+  font-weight:800;
+  text-align:center;
+}
+
+.non-english .general-th:last-child{
+  border-right:0;
+}
+
+.non-english .col-resizer{
+  position:absolute;
+  top:0;
+  right:-5px;
+  width:10px;
+  height:100%;
+  cursor:col-resize;
+  touch-action:none;
+  z-index:4;
+}
+
+.non-english .col-resizer::after{
+  content:"";
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:4px;
+  width:2px;
+  background:transparent;
+}
+
+.non-english .col-resizer:hover::after,
+.is-resizing-columns .non-english .col-resizer::after{
+  background:rgba(23,34,66,.32);
+}
+
+.non-english .general-day-block{
+  position:relative;
+  display:grid;
+  grid-template-columns:0 minmax(0, 1fr);
+}
+
+.non-english .general-day-marker{
+  position:relative;
+  min-width:0;
+}
+
+.non-english .general-day-marker .day-badge{
+  left:-92px;
+  top:0;
+  bottom:0;
+  height:100%;
+}
+
+.non-english .general-day-rows{
+  min-width:0;
+}
+
+.non-english .general-td{
+  min-width:0;
+  border-right:2px solid var(--grid);
+  border-bottom:2px solid var(--grid);
+  vertical-align:top;
+  background:#fff;
+}
+
+.non-english .general-row.row-recess .general-td{
+  background:#eef9ec;
+}
+
+.non-english .general-row.row-recess .rich:not(.observation-rich){
+  color:#27632a;
+  font-weight:800;
+}
+
+.non-english .general-td:last-child{
+  border-right:0;
+}
+
+.non-english .general-day-block:last-child .general-row:last-child .general-td{
+  border-bottom:0;
+}
+
+.non-english .general-td .rich{
+  min-height:58px;
+  overflow-wrap:break-word;
+  word-break:normal;
+}
+
+.non-english .row-events{
+  overflow-wrap:break-word;
+}
+
+/* =========================
    COORDINATION MESSAGE
 ========================= */
 .coord{
@@ -1042,6 +1182,163 @@ body{
 
   .td-unit .rich{
     padding-left: 10px;
+  }
+}
+
+@media (max-width: 1024px){
+  .non-english .page{
+    width:calc(100% - 20px);
+    margin:10px auto;
+  }
+
+  .non-english .top-actions{
+    align-items:flex-start;
+  }
+
+  .non-english .actions-right{
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+}
+
+@media (max-width: 768px){
+  .non-english .page{
+    width:100%;
+    margin:0;
+    border-radius:0;
+  }
+
+  .non-english .sheet-wrap{
+    padding-right:10px;
+    padding-left:96px;
+  }
+}
+
+@media (max-width: 640px){
+  .non-english .sheet-wrap{
+    padding:0 12px 14px 12px;
+    overflow-x:hidden;
+  }
+
+  .non-english .sheet{
+    min-width:0;
+  }
+
+  .non-english .sheet-inner{
+    border-radius:14px;
+  }
+
+  .non-english .sheet-inner::after{
+    border-radius:14px;
+  }
+
+  .non-english .general-header{
+    display:none;
+  }
+
+  .non-english .general-day-block{
+    display:block;
+    border-bottom:2px solid var(--grid);
+  }
+
+  .non-english .general-day-block:last-child{
+    border-bottom:0;
+  }
+
+  .non-english .general-day-marker{
+    min-height:64px;
+    border-bottom:2px solid var(--grid);
+    background:#fff;
+  }
+
+  .non-english .general-day-marker .day-badge{
+    position:relative;
+    left:0;
+    width:100%;
+    height:64px;
+    padding:8px 10px;
+    justify-content:flex-start;
+  }
+
+  .non-english .general-day-marker .dayNum{
+    width:62px;
+    font-size:34px;
+  }
+
+  .non-english .general-day-marker .weekPill{
+    height:48px;
+  }
+
+  .non-english .general-row{
+    display:block;
+    border-bottom:2px solid var(--grid);
+    padding:8px;
+    background:#fff;
+  }
+
+  .non-english .general-row:last-child{
+    border-bottom:0;
+  }
+
+  .non-english .general-td{
+    display:grid;
+    grid-template-columns:minmax(108px, 34%) minmax(0, 1fr);
+    gap:8px;
+    border:1px solid rgba(26,35,71,.22);
+    border-radius:8px;
+    margin-bottom:8px;
+    overflow:hidden;
+  }
+
+  .non-english .general-td:last-child{
+    border-right:1px solid rgba(26,35,71,.22);
+    margin-bottom:0;
+  }
+
+  .non-english .general-td::before{
+    content:attr(data-label);
+    background:#f6f6f6;
+    color:var(--navy);
+    font-size:12px;
+    font-weight:900;
+    padding:10px 8px;
+    border-right:1px solid rgba(26,35,71,.18);
+    overflow-wrap:break-word;
+  }
+
+  .non-english .general-td .rich{
+    min-height:46px;
+    padding:9px 8px;
+  }
+
+  .non-english .col-resizer{
+    display:none;
+  }
+}
+
+@media (max-width: 420px){
+  .non-english .top-actions,
+  .non-english .hero-content{
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  .non-english .week-nav,
+  .non-english .actions-right{
+    width:100%;
+  }
+
+  .non-english .actions-right .btn{
+    flex:1;
+  }
+
+  .non-english .general-td{
+    grid-template-columns:1fr;
+  }
+
+  .non-english .general-td::before{
+    border-right:0;
+    border-bottom:1px solid rgba(26,35,71,.18);
   }
 }
 

@@ -53,12 +53,22 @@ const state = {
   weekLabel: "(26 a 30 de Janeiro)",
   dateText: "",
   rows: [],
+  generalColumnWidths: [22, 19.5, 24.5, 19.5, 14.5],
   coordMessage: "",
   isViewMode: document.body.classList.contains("view-mode"),
   idToken: sessionStorage.getItem("lessonPrepIdToken") || "",
   googleUser: null,
   authReady: false,
 };
+
+const GENERAL_ROWS_PER_DAY = 6;
+const GENERAL_COLUMNS = [
+  { field: "unitDay", label: "Disciplina", min: 18 },
+  { field: "conteudo", label: "Conteúdo", min: 14 },
+  { field: "desenvolvimento", label: "Desenvolvimento da aula", min: 18 },
+  { field: "materiais", label: "Materiais para a aula", min: 14 },
+  { field: "tarefas", label: "Tarefas", min: 12 },
+];
 
 /* =========================
    HELPERS
@@ -176,6 +186,15 @@ function updateHeaderImage(){
   if(!img.src.endsWith(nextSrc)) img.src = nextSrc;
 }
 
+function applyTeacherModeClass(){
+  document.body.classList.toggle("non-english", isGeneralTeacher());
+  document.body.classList.toggle("english-teacher", state.teacherProfileLoaded && state.isEnglishTeacher);
+}
+
+function isGeneralTeacher(){
+  return state.teacherProfileLoaded && !state.isEnglishTeacher;
+}
+
 function applyTeacherProfile(profile){
   if(!profile) throw new Error("Perfil do professor não carregado.");
   const teacher = profile.teacher || null;
@@ -187,6 +206,7 @@ function applyTeacherProfile(profile){
   state.allowedClasses = splitClasses(teacher.classes);
   state.isEnglishTeacher = Boolean(teacher.isEnglishTeacher);
   state.teacherProfileLoaded = true;
+  applyTeacherModeClass();
 
   if(!state.allowedClasses.length) {
     throw new Error("Nenhuma turma cadastrada para este professor.");
@@ -206,6 +226,7 @@ function applyTeacherProfile(profile){
 
   updateHeaderImage();
   updateClassPickerOptions();
+  state.rows = ensureRowsForCurrentMode(state.rows, state.weekStart);
   hydrateUI();
 }
 
@@ -241,21 +262,31 @@ function updateClassControls(){
 /* =========================
    RENDER TABLE
 ========================= */
+function emptyLessonRow(weekStart, weekday, dayOffset, slot = 0){
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + dayOffset);
+  return {
+    date: toISODate(d),
+    weekday: weekday.label,
+    dayNum: d.getDate(),
+    slot,
+    unitDay: "",
+    conteudo: "",
+    desenvolvimento: "",
+    materiais: "",
+    tarefas: "",
+    localRecess: false,
+    observations: {},
+  };
+}
+
 function buildInitialRows(weekStart){
-  const rows = WEEKDAYS.map((w, idx) => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + idx);
-    return {
-      date: toISODate(d),
-      weekday: w.label,
-      dayNum: d.getDate(),
-      unitDay: "",
-      conteudo: "",
-      desenvolvimento: "",
-      materiais: "",
-      localRecess: false,
-      observations: {},
-    };
+  const rows = [];
+  WEEKDAYS.forEach((w, idx) => {
+    const count = isGeneralTeacher() ? GENERAL_ROWS_PER_DAY : 1;
+    for(let slot = 0; slot < count; slot += 1){
+      rows.push(emptyLessonRow(weekStart, w, idx, slot));
+    }
   });
   return rows;
 }
@@ -269,13 +300,49 @@ function normalizeRow(row){
     conteudo: row.conteudo || "",
     desenvolvimento: row.desenvolvimento || "",
     materiais: row.materiais || "",
+    tarefas: row.tarefas || "",
     localRecess: Boolean(row.localRecess),
     observations: row.observations && typeof row.observations === "object" ? row.observations : {},
   };
 }
 
 function lessonFields(){
-  return ["unitDay", "conteudo", "desenvolvimento", "materiais"];
+  const fields = ["unitDay", "conteudo", "desenvolvimento", "materiais"];
+  if(isGeneralTeacher()) fields.push("tarefas");
+  return fields;
+}
+
+function ensureRowsForCurrentMode(rows, weekStart){
+  const source = Array.isArray(rows) ? rows.map(normalizeRow) : [];
+  if(isGeneralTeacher()) return ensureGeneralRows(source, weekStart);
+  return ensureEnglishRows(source, weekStart);
+}
+
+function ensureEnglishRows(source, weekStart){
+  return WEEKDAYS.map((weekday, dayOffset) => {
+    const empty = emptyLessonRow(weekStart, weekday, dayOffset, 0);
+    const found = source.find((row) => row.date === empty.date);
+    return found ? { ...empty, ...normalizeRow(found), slot: 0 } : empty;
+  });
+}
+
+function ensureGeneralRows(source, weekStart){
+  const used = new Set();
+  const rows = [];
+  WEEKDAYS.forEach((weekday, dayOffset) => {
+    const base = emptyLessonRow(weekStart, weekday, dayOffset, 0);
+    const sameDate = source.filter((row) => row.date === base.date);
+    for(let slot = 0; slot < GENERAL_ROWS_PER_DAY; slot += 1){
+      const exactIndex = sameDate.findIndex((row, index) => !used.has(`${base.date}:${index}`) && Number(row.slot || 0) === slot);
+      const fallbackIndex = sameDate.findIndex((row, index) => !used.has(`${base.date}:${index}`));
+      const sourceIndex = exactIndex >= 0 ? exactIndex : fallbackIndex;
+      const found = sourceIndex >= 0 ? sameDate[sourceIndex] : null;
+      if(sourceIndex >= 0) used.add(`${base.date}:${sourceIndex}`);
+      const empty = emptyLessonRow(weekStart, weekday, dayOffset, slot);
+      rows.push(found ? { ...empty, ...normalizeRow(found), slot } : empty);
+    }
+  });
+  return rows;
 }
 
 function eventsForDate(date){
@@ -298,13 +365,17 @@ function toggleLocalRecess(index){
   if(state.isViewMode) return;
   const row = state.rows[index];
   if(!row) return;
-  row.localRecess = !row.localRecess;
-  if(row.localRecess){
-    lessonFields().forEach((field) => row[field] = "");
-    row.conteudo = "Recesso";
-  }else if(row.conteudo === "Recesso"){
-    row.conteudo = "";
-  }
+  const rowsToToggle = isGeneralTeacher() ? state.rows.filter((item) => item.date === row.date) : [row];
+  const nextValue = !rowsToToggle.some((item) => item.localRecess);
+  rowsToToggle.forEach((item, position) => {
+    item.localRecess = nextValue;
+    if(item.localRecess){
+      lessonFields().forEach((field) => item[field] = "");
+      if(position === 0) item.conteudo = "Recesso";
+    }else if(item.conteudo === "Recesso"){
+      item.conteudo = "";
+    }
+  });
   hydrateUI();
   saveToBackend({ silent: true });
 }
@@ -337,6 +408,11 @@ function movePlanning(direction){
 }
 
 function renderRows(){
+  if(isGeneralTeacher()){
+    renderGeneralRows();
+    return;
+  }
+  renderEnglishTableShell();
   const rowsEl = document.getElementById("rows");
   if(!rowsEl) return;
 
@@ -446,6 +522,193 @@ function renderRows(){
   });
 
   hookEditListeners();
+}
+
+function renderEnglishTableShell(){
+  const sheetInner = document.querySelector(".sheet-inner");
+  if(!sheetInner || sheetInner.dataset.mode === "english") return;
+  sheetInner.dataset.mode = "english";
+  sheetInner.innerHTML = `
+    <table class="lp-table">
+      <colgroup>
+        <col class="col-unit">
+        <col class="col-content">
+        <col class="col-dev">
+        <col class="col-mat">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Unidade, dia</th>
+          <th>Conteúdo</th>
+          <th>Desenvolvimento da aula</th>
+          <th>Materiais para a aula</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  `;
+}
+
+function renderGeneralRows(){
+  const sheetInner = document.querySelector(".sheet-inner");
+  if(!sheetInner) return;
+  sheetInner.dataset.mode = "general";
+  sheetInner.innerHTML = "";
+
+  const week = document.createElement("div");
+  week.className = "general-week";
+  week.style.setProperty("--general-cols", state.generalColumnWidths.map((width) => `${width}%`).join(" "));
+
+  const header = document.createElement("div");
+  header.className = "general-header";
+  GENERAL_COLUMNS.forEach((column, index) => {
+    const cell = document.createElement("div");
+    cell.className = "general-th";
+    cell.textContent = column.label;
+    if(index < GENERAL_COLUMNS.length - 1 && !state.isViewMode){
+      const handle = document.createElement("span");
+      handle.className = "col-resizer";
+      handle.dataset.index = index;
+      handle.setAttribute("aria-hidden", "true");
+      cell.appendChild(handle);
+    }
+    header.appendChild(cell);
+  });
+  week.appendChild(header);
+
+  WEEKDAYS.forEach((weekday, dayOffset) => {
+    const dayRows = state.rows.filter((row) => row.weekday === weekday.label);
+    if(!dayRows.length) return;
+    const block = document.createElement("section");
+    block.className = "general-day-block";
+
+    const marker = document.createElement("div");
+    marker.className = "general-day-marker";
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "day-badge";
+    badge.title = "Marcar/desmarcar recesso";
+    if(!state.isViewMode) badge.addEventListener("click", () => toggleLocalRecess(state.rows.indexOf(dayRows[0])));
+
+    const dayNum = document.createElement("div");
+    dayNum.className = "dayNum";
+    dayNum.textContent = dayRows[0].dayNum;
+
+    const weekPill = document.createElement("div");
+    weekPill.className = "weekPill";
+    weekPill.textContent = weekday.label;
+
+    badge.append(dayNum, weekPill);
+    marker.appendChild(badge);
+    block.appendChild(marker);
+
+    const body = document.createElement("div");
+    body.className = "general-day-rows";
+    dayRows.slice(0, GENERAL_ROWS_PER_DAY).forEach((row) => {
+      const idx = state.rows.indexOf(row);
+      const fixedEvents = fixedEventsForDate(row.date);
+      const observationEvents = observationEventsForDate(row.date);
+      const rowFixed = isFixedRow(row);
+      const line = document.createElement("div");
+      line.className = "general-row";
+      if(rowFixed) line.classList.add("row-recess");
+
+      GENERAL_COLUMNS.forEach((column) => {
+        const cell = document.createElement("div");
+        cell.className = "general-td";
+        cell.dataset.label = column.label;
+
+        if(column.field === "conteudo" && row.slot === 0 && (fixedEvents.length || observationEvents.length)){
+          const eventsBox = document.createElement("div");
+          eventsBox.className = "row-events";
+          fixedEvents.forEach((event) => {
+            const eventEl = document.createElement("div");
+            eventEl.className = "row-event row-event-fixed";
+            eventEl.style.backgroundColor = event.color || "#dff4df";
+            eventEl.innerHTML = `<strong>${event.title || ""}</strong><div>${event.html || ""}</div>`;
+            eventsBox.appendChild(eventEl);
+          });
+          observationEvents.forEach((event) => {
+            const eventEl = document.createElement("div");
+            eventEl.className = "row-event row-event-observation";
+            eventEl.style.backgroundColor = event.color || "#fff4c2";
+            const current = row.observations?.[event.eventId] || event.html || event.title || "";
+            eventEl.innerHTML = `<strong>${event.title || ""}</strong>`;
+            const editable = document.createElement("div");
+            editable.className = "rich observation-rich";
+            editable.dataset.index = idx;
+            editable.dataset.observationId = event.eventId;
+            editable.innerHTML = current;
+            if(!state.isViewMode) editable.contentEditable = "true";
+            eventEl.appendChild(editable);
+            eventsBox.appendChild(eventEl);
+          });
+          cell.appendChild(eventsBox);
+        }
+
+        const rich = document.createElement("div");
+        rich.className = "rich";
+        rich.dataset.field = column.field;
+        rich.dataset.index = idx;
+        rich.innerHTML = row[column.field] || "";
+        if(!state.isViewMode && !rowFixed) rich.contentEditable = "true";
+        cell.appendChild(rich);
+        line.appendChild(cell);
+      });
+      body.appendChild(line);
+    });
+    block.appendChild(body);
+    week.appendChild(block);
+  });
+
+  sheetInner.appendChild(week);
+  initColumnResizers();
+  hookEditListeners();
+}
+
+function initColumnResizers(){
+  if(!isGeneralTeacher() || state.isViewMode) return;
+  document.querySelectorAll(".col-resizer").forEach((handle) => {
+    if(handle.dataset.resizeBound === "true") return;
+    handle.dataset.resizeBound = "true";
+    handle.addEventListener("pointerdown", (event) => {
+      if(window.matchMedia("(max-width: 640px)").matches) return;
+      event.preventDefault();
+      const index = Number(handle.dataset.index);
+      const week = handle.closest(".general-week");
+      if(!week || !Number.isFinite(index)) return;
+
+      const startX = event.clientX;
+      const startWidths = [...state.generalColumnWidths];
+      const totalWidth = week.getBoundingClientRect().width || 1;
+      handle.setPointerCapture?.(event.pointerId);
+      document.body.classList.add("is-resizing-columns");
+
+      const onMove = (moveEvent) => {
+        const delta = ((moveEvent.clientX - startX) / totalWidth) * 100;
+        const next = [...startWidths];
+        const left = Math.max(GENERAL_COLUMNS[index].min, startWidths[index] + delta);
+        const appliedDelta = left - startWidths[index];
+        const right = Math.max(GENERAL_COLUMNS[index + 1].min, startWidths[index + 1] - appliedDelta);
+        const actualDelta = startWidths[index + 1] - right;
+        next[index] = startWidths[index] + actualDelta;
+        next[index + 1] = right;
+        state.generalColumnWidths = next;
+        week.style.setProperty("--general-cols", next.map((width) => `${width}%`).join(" "));
+      };
+
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        document.body.classList.remove("is-resizing-columns");
+      };
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    });
+  });
 }
 
 /* =========================
@@ -820,10 +1083,11 @@ function applyLessonPayload(payload){
   state.isEnglishTeacher = Boolean(state.isEnglishTeacher);
   state.weekLabel = payload.weekLabel || state.weekLabel;
   state.dateText = payload.dateText || state.dateText;
-  state.rows = Array.isArray(payload.rows) ? payload.rows.map(normalizeRow) : state.rows;
+  state.rows = Array.isArray(payload.rows) ? ensureRowsForCurrentMode(payload.rows, state.weekStart) : state.rows;
   state.coordMessage = payload.coordMessage || "";
 
   updateHeaderImage();
+  applyTeacherModeClass();
   hydrateUI();
 }
 
