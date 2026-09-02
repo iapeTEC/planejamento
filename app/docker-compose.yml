@@ -1,0 +1,23 @@
+name: planejamento
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: planejamento
+      POSTGRES_PASSWORD: planejamento
+      POSTGRES_DB: planejamento
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - planejamento_db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+networks:
+  internal:
+    name: planejamento_internal
+
+volumes:
+  planejamento_db_data:

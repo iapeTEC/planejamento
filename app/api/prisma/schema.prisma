@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClassLevel {
+  infantil
+  fundamental
+}
+
+enum AgendaTemplate {
+  infantil
+  fundamental
+}
+
+enum AiJobStatus {
+  pending
+  running
+  done
+  failed
+}
+
+model Coordinator {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  googleSub String?  @unique
+  createdAt DateTime @default(now())
+}
+
+model Teacher {
+  id               String   @id @default(uuid())
+  name             String
+  phone            String?
+  photoUrl         String?
+  isEnglishTeacher Boolean  @default(false)
+  active           Boolean  @default(true)
+  magicToken       String   @unique @default(uuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  classes     TeacherClass[]
+  lessonWeeks LessonWeek[]
+}
+
+model Class {
+  id    String     @id @default(uuid())
+  name  String     @unique
+  level ClassLevel
+
+  teachers    TeacherClass[]
+  lessonWeeks LessonWeek[]
+}
+
+model TeacherClass {
+  teacherId String
+  classId   String
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([teacherId, classId])
+}
+
+model LessonWeek {
+  id         String   @id @default(uuid())
+  teacherId  String
+  classId    String
+  term       String
+  weekStart  DateTime @db.Date
+  coordMessage String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  days    LessonDay[]
+  agenda  Agenda?
+
+  @@unique([teacherId, classId, weekStart])
+  @@index([weekStart])
+}
+
+model LessonDay {
+  id           String   @id @default(uuid())
+  lessonWeekId String
+  weekday      String
+  date         DateTime @db.Date
+  slot         Int      @default(0)
+  isRecess     Boolean  @default(false)
+
+  // Campos gerais (turmas não-inglês)
+  unitDay         String?
+  conteudo        String?
+  desenvolvimento String?
+  materiais       String?
+  tarefas         String?
+
+  // Campos exclusivos de professoras de inglês
+  pppPresentation String?
+  pppPractice     String?
+  pppProduction   String?
+  skillListening  String?
+  skillWriting    String?
+  skillReading    String?
+  skillSpeaking   String?
+
+  // Agenda (para os pais)
+  agendaHtml         String?
+  agendaGeneratedByAi Boolean @default(false)
+
+  observations Json?
+
+  updatedAt DateTime @updatedAt
+
+  lessonWeek LessonWeek @relation(fields: [lessonWeekId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonWeekId, date, slot])
+  @@index([lessonWeekId])
+}
+
+model CalendarEvent {
+  id            String   @id @default(uuid())
+  date          DateTime @db.Date
+  title         String
+  html          String?
+  color         String   @default("#dff4df")
+  isObservation Boolean  @default(false)
+  importId      String?
+  createdAt     DateTime @default(now())
+
+  @@index([date])
+}
+
+model Agenda {
+  id           String         @id @default(uuid())
+  lessonWeekId String         @unique
+  template     AgendaTemplate
+  imageUrl     String?
+  updatedBy    String?
+  updatedAt    DateTime       @updatedAt
+
+  lessonWeek LessonWeek @relation(fields: [lessonWeekId], references: [id], onDelete: Cascade)
+}
+
+model AiJob {
+  id          String      @id @default(uuid())
+  lessonDayId String
+  status      AiJobStatus @default(pending)
+  prompt      String
+  result      String?
+  error       String?
+  createdAt   DateTime    @default(now())
+  finishedAt  DateTime?
+
+  @@index([lessonDayId])
+}
+
+model AuditLog {
+  id       String   @id @default(uuid())
+  actor    String
+  action   String
+  entity   String
+  entityId String
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+}
