@@ -83,13 +83,52 @@ export async function requireTeacher(req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const teacher = await prisma.teacher.findUnique({ where: { magicToken: token } });
-    if (!teacher || !teacher.active) {
+    const teacher = await findTeacherByToken(token);
+    if (!teacher) {
       res.status(401).json({ error: "Professor não cadastrado ou inativo." });
       return;
     }
 
     req.teacherId = teacher.id;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: err instanceof Error ? err.message : "Falha na autenticação." });
+  }
+}
+
+/**
+ * Aceita tanto o link mágico da professora quanto o login Google da
+ * coordenação — usada nas rotas que a coordenadora também precisa poder
+ * corrigir (planejamento e agenda), não só ver.
+ */
+export async function requireTeacherOrCoordinator(req: Request, res: Response, next: NextFunction) {
+  try {
+    const teacherToken = req.header("x-teacher-token");
+    if (teacherToken) {
+      const teacher = await findTeacherByToken(teacherToken);
+      if (!teacher) {
+        res.status(401).json({ error: "Professor não cadastrado ou inativo." });
+        return;
+      }
+      req.teacherId = teacher.id;
+      next();
+      return;
+    }
+
+    const authHeader = req.header("authorization") ?? "";
+    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!idToken) {
+      res.status(401).json({ error: "Login do professor ou da coordenação obrigatório." });
+      return;
+    }
+
+    const user = await verifyGoogleIdToken(idToken);
+    if (!isAdminEmail(user.email)) {
+      res.status(403).json({ error: "Acesso de coordenação obrigatório." });
+      return;
+    }
+
+    req.coordinator = user;
     next();
   } catch (err) {
     res.status(401).json({ error: err instanceof Error ? err.message : "Falha na autenticação." });

@@ -1,0 +1,43 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7f9; color: #1a1a1a; }
+
+.planner, .dashboard, .agenda { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+.planner-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+.week-controls { display: flex; align-items: center; gap: 8px; }
+.save-status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.save-status--error { color: #b00020; font-weight: 600; }
+.save-status--saved { color: #157a3d; }
+.save-btn { background: #1a4fd6; color: #fff; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+.agenda-link { color: #1a4fd6; font-weight: 600; text-decoration: none; }
+
+.lp-table { width: 100%; border-collapse: collapse; background: #fff; }
+.lp-table th, .lp-table td { border: 1px solid #d8dce3; padding: 8px; vertical-align: top; }
+.lp-table th { background: #eef1f7; font-size: 13px; }
+.lp-table textarea { width: 100%; min-height: 70px; border: 1px solid #d8dce3; border-radius: 4px; padding: 6px; font: inherit; resize: vertical; }
+.day-cell { text-align: center; font-weight: 700; background: #fafbfc; white-space: nowrap; }
+.ppp-cell label, .skills-cell label { display: block; font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+.ppp-cell textarea, .skills-cell textarea { min-height: 40px; }
+.agenda-cell button { margin-bottom: 6px; }
+
+.teachers-table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 12px; }
+.teachers-table th, .teachers-table td { border: 1px solid #d8dce3; padding: 8px; text-align: left; }
+.teachers-table tr.inactive { opacity: 0.5; }
+.badge { margin-left: 6px; font-size: 11px; background: #1a4fd6; color: #fff; border-radius: 10px; padding: 2px 8px; }
+.actions button { margin-right: 6px; }
+.actions .danger { color: #b00020; }
+
+.add-teacher { background: #fff; border: 1px solid #d8dce3; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.add-teacher fieldset { border: 1px solid #d8dce3; border-radius: 6px; }
+.add-teacher input[type="text"], .add-teacher input:not([type]) { padding: 6px; }
+
+.agenda-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.agenda-day { background: #fff; border: 1px solid #d8dce3; border-radius: 8px; padding: 12px; }
+.agenda-day h2 { font-size: 15px; margin: 0 0 8px; }
+.agenda-day-content { min-height: 100px; outline: none; }
+.agenda-image { margin-top: 16px; background: #fff; border: 1px solid #d8dce3; border-radius: 8px; padding: 12px; }
+.agenda-image img { max-width: 100%; }
+
+.signin { max-width: 400px; margin: 80px auto; text-align: center; }
+.loading { padding: 40px; text-align: center; color: #666; }
+.hint { color: #666; font-size: 13px; }

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/db.js";
-import { requireTeacher } from "../lib/auth.js";
+import { requireTeacher, requireTeacherOrCoordinator } from "../lib/auth.js";
 
 export const lessonWeeksRouter = Router();
 
@@ -100,7 +100,8 @@ lessonWeeksRouter.put("/", requireTeacher, async (req, res) => {
 });
 
 // PATCH /api/lesson-days/:id — autosave granular de um campo/dia específico.
-lessonWeeksRouter.patch("/days/:id", requireTeacher, async (req, res) => {
+// Aceita professora (link mágico) OU coordenação (correção direta na Agenda/Planejamento).
+lessonWeeksRouter.patch("/days/:id", requireTeacherOrCoordinator, async (req, res) => {
   const parsed = dayInput.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

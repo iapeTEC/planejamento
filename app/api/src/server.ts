@@ -4,6 +4,7 @@ import express from "express";
 import { agendasRouter } from "./routes/agendas.js";
 import { aiRouter } from "./routes/ai.js";
 import { calendarEventsRouter } from "./routes/calendarEvents.js";
+import { classesRouter } from "./routes/classes.js";
 import { lessonWeeksRouter } from "./routes/lessonWeeks.js";
 import { teachersRouter } from "./routes/teachers.js";
 
@@ -14,6 +15,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/teachers", teachersRouter);
+app.use("/api/classes", classesRouter);
 app.use("/api/lesson-weeks", lessonWeeksRouter);
 app.use("/api/calendar-events", calendarEventsRouter);
 app.use("/api/agendas", agendasRouter);
