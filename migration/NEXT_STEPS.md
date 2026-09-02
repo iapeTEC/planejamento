@@ -173,8 +173,10 @@ total, ~5.8Gi disponível — folga confortável pra mais um stack pequeno.
 - Postgres do novo stack não deve ser exposto para fora da rede interna dele
   (seguir o mesmo padrão do `onevoice27-db-1`, que já faz isso certo).
 
-**DNS**: a VM não tem IP público — só é alcançável via túnel reverso pela
-VPS. Duas opções:
+**DNS**: o domínio `iape.tech` é gerenciado na **Hostinger** (confirmado
+2026-09-02 pela Norma — é lá que o registro `planejamento.iape.tech` vai
+precisar ser criado quando chegar a hora do corte). A VM não tem IP público —
+só é alcançável via túnel reverso pela VPS. Duas opções:
 1. Nginx na própria VPS fazendo proxy pelo túnel reverso já existente até a
    porta da app na VM.
 2. Um túnel reverso dedicado (autossh/systemd) mantendo a porta da app da VM
