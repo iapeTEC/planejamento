@@ -1,5 +1,47 @@
 # Planejamento IAPE → SaaS escolar — Plano completo e estado atual
 
+## Status em 2026-09-02 (fim do dia): Fase 3 e 4 prontas, nada em produção tocado
+
+Combinado com a Norma: **nenhum corte de produção acontece antes do fim de
+semana**. Nada em `index.html`/`admin.html`/`view.html`/`app.js`/`admin.js`
+(a raiz deste repositório, sistema atual em Apps Script) foi tocado hoje —
+todo o trabalho novo vive isolado em `app/`.
+
+O que já está pronto e testado (código em `app/api` e `app/web`, ver commits
+`cec4df9` e `c6a6ced`):
+- Backend (Fase 3): schema Prisma completo, API Express, autosave, auth
+  (Google OAuth pra coordenação, link mágico pra professora). Testado de
+  ponta a ponta contra um Postgres real na VM.
+- Frontend (Fase 4): editor de planejamento (autosave com debounce + save no
+  blur + rascunho em localStorage, troca de semana instantânea via
+  prefetch, campos de PPP/Skills só pra inglês, botão "Gerar por IA", link
+  pra Agenda), dashboard da coordenadora (cadastro completo de professoras,
+  WhatsApp, ativar/desativar), página de Agenda (edição por dia, botão de
+  PDF que ainda devolve 501 de propósito).
+- `npm run build` e `npm run typecheck` passam limpos nos dois pacotes
+  (`app/api`, `app/web`).
+- **Não verificado visualmente no navegador** — a extensão Claude in Chrome
+  caiu no meio da sessão. Antes de qualquer corte real, abrir as telas de
+  verdade num navegador e testar como usuário.
+
+O que falta antes do corte de fim de semana (não é bloqueante pra continuar
+codando, mas é bloqueante pra ir ao ar):
+1. Verificação visual no navegador (item acima).
+2. Geração de PDF de verdade (Playwright) — hoje é um 501 proposital.
+3. Upload de imagem real na Agenda (precisa de um endpoint de assets —
+   S3/minio ou disco na VM; hoje só aceita URL de imagem já hospedada).
+4. Layout pixel-perfect dos dois templates de Agenda (Infantil/Fundamental)
+   comparado aos PDFs originais — hoje é funcional, não é fiel ao layout.
+5. Suporte a múltiplas linhas por dia pros professores gerais (o sistema
+   atual tem 6 linhas/dia; a versão nova hoje só tem 1 — simplificação
+   deliberada da Fase 4, ainda não corrigida).
+6. Script de migração real dos dados das planilhas pro Postgres (Fase 3
+   descreve o plano, ainda não escrito).
+7. Ligar a IA de verdade (Codex na VM) — endpoint já pronto, só falta o
+   Codex instalado + `AI_ENDPOINT` configurado.
+8. Decidir e implementar a exposição pública (DNS `planejamento.iape.tech`
+   → algo que alcance a VM pelo túnel) — ver Fase 6 mais abaixo.
+
 Este documento existe para que qualquer sessão (Claude, Codex, ou você mesma)
 consiga continuar este projeto sem precisar refazer a descoberta. Escrito em
 2026-09-02 depois da Fase 1 (descoberta) e Fase 2 (arquitetura). Ver também
