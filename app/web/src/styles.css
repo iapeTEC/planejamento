@@ -841,3 +841,31 @@ h1 { color: var(--navy); }
 .mode-toggle { display: flex; gap: 4px; background: #f2f2f2; border-radius: 8px; padding: 3px; }
 .mode-toggle button { background: transparent; color: #333; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-weight: 600; }
 .mode-toggle button.mode-active { background: var(--purple-1); color: #fff; }
+
+/* Balão com o comentário ao passar o mouse sobre o trecho destacado. */
+.supervisor-highlight { position: relative; }
+.supervisor-highlight::after,
+.supervisor-highlight::before {
+  opacity: 0; visibility: hidden; transition: opacity 0.12s ease;
+  position: absolute; left: 50%; transform: translateX(-50%);
+  pointer-events: none; z-index: 300;
+}
+.supervisor-highlight::after {
+  content: attr(data-note);
+  bottom: calc(100% + 10px);
+  background: var(--navy); color: #fff;
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 500; line-height: 1.4;
+  white-space: normal; width: max-content; max-width: 220px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.supervisor-highlight::before {
+  content: "";
+  bottom: calc(100% + 4px);
+  border: 6px solid transparent;
+  border-top-color: var(--navy);
+}
+.supervisor-highlight:hover::after,
+.supervisor-highlight:hover::before {
+  opacity: 1; visibility: visible;
+}

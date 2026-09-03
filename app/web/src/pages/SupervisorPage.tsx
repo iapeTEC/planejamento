@@ -116,15 +116,18 @@ export function SupervisorPage() {
     if (appliedHighlightsRef.current) return;
     if (!annotations.length || !contentRef.current) return;
     for (const annotation of annotations) {
-      applyHighlightByQuote(contentRef.current, annotation.quote, annotation.id);
+      applyHighlightByQuote(contentRef.current, annotation.quote, annotation.id, annotation.note);
     }
     appliedHighlightsRef.current = true;
   }, [annotations]);
 
-  function wrapRange(range: Range, id: string) {
+  function wrapRange(range: Range, id: string, note: string) {
     const mark = document.createElement("mark");
     mark.className = "supervisor-highlight";
     mark.dataset.annotationId = id;
+    // Vira o balão que aparece ao passar o mouse (ver .supervisor-highlight
+    // no CSS) — sem precisar de JS extra pra mostrar/esconder.
+    mark.dataset.note = note;
     try {
       range.surroundContents(mark);
     } catch {
@@ -134,7 +137,7 @@ export function SupervisorPage() {
     }
   }
 
-  function applyHighlightByQuote(root: HTMLElement, quote: string, id: string) {
+  function applyHighlightByQuote(root: HTMLElement, quote: string, id: string, note: string) {
     if (!quote) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node: Text | null;
@@ -145,7 +148,7 @@ export function SupervisorPage() {
       const range = document.createRange();
       range.setStart(node, idx);
       range.setEnd(node, idx + quote.length);
-      wrapRange(range, id);
+      wrapRange(range, id, note);
       return;
     }
   }
@@ -181,7 +184,7 @@ export function SupervisorPage() {
     }
     const id = crypto.randomUUID();
     const quote = pendingRangeRef.current.toString();
-    wrapRange(pendingRangeRef.current, id);
+    wrapRange(pendingRangeRef.current, id, noteDraft.trim());
     const next = [...annotations, { id, quote, note: noteDraft.trim() }];
     setAnnotations(next);
     setPendingRect(null);
