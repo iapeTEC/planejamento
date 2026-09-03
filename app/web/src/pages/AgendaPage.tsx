@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, getTeacherToken } from "../lib/api";
+import { api, getCoordinatorSession, getTeacherToken } from "../lib/api";
 
 interface AgendaResponse {
   id: string;
@@ -16,10 +16,10 @@ interface AgendaResponse {
 }
 
 function authHeaders(): HeadersInit {
-  const teacherToken = new URLSearchParams(window.location.search).get("t") ?? localStorage.getItem("planejamento:teacherToken") ?? "";
-  const idToken = sessionStorage.getItem("planejamento:coordinatorIdToken") ?? "";
+  const teacherToken = getTeacherToken();
+  const coordinatorSession = getCoordinatorSession();
   const headers = new Headers();
-  if (idToken) headers.set("authorization", `Bearer ${idToken}`);
+  if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
   else if (teacherToken) headers.set("x-teacher-token", teacherToken);
   return headers;
 }

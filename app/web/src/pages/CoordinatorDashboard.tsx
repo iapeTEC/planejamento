@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, type Teacher } from "../lib/api";
-import { clearCoordinatorIdToken, getCoordinatorIdToken, setCoordinatorIdToken } from "../lib/api";
+import { api, getCoordinatorSession, loginCoordinator, logoutCoordinator, type Teacher } from "../lib/api";
 import { renderGoogleSignInButton } from "../lib/googleAuth";
 
 function whatsappLink(phone: string): string {
@@ -22,17 +21,27 @@ function isOnline(lastSeenAt: string | null): boolean {
 
 function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
   useEffect(() => {
     if (ref.current) {
-      void renderGoogleSignInButton(ref.current, (idToken) => {
-        setCoordinatorIdToken(idToken);
-        onSignedIn();
+      void renderGoogleSignInButton(ref.current, async (idToken) => {
+        try {
+          await loginCoordinator(idToken);
+          onSignedIn();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Falha ao entrar.");
+        }
       });
     }
   }, [onSignedIn]);
   return (
     <div className="signin">
       <p>Entre com o Gmail cadastrado como coordenação.</p>
+      {error && (
+        <p className="hint" style={{ color: "#b00020", fontWeight: 700 }}>
+          {error}
+        </p>
+      )}
       <div ref={ref} />
     </div>
   );
@@ -173,17 +182,22 @@ function AddTeacherForm({ onAdded }: { onAdded: () => void }) {
 }
 
 export function CoordinatorDashboard() {
-  const [authed, setAuthed] = useState(Boolean(getCoordinatorIdToken()));
+  const [authed, setAuthed] = useState(Boolean(getCoordinatorSession()));
   const queryClient = useQueryClient();
 
   const teachersQuery = useQuery({
     queryKey: ["teachers"],
     queryFn: api.listTeachers,
     enabled: authed,
+    retry: false,
     // Atualiza sozinho pra bolinha de presença refletir quem está com a
     // página aberta agora, sem a coordenadora precisar recarregar.
     refetchInterval: 20_000,
   });
+
+  function signOutAndReauth() {
+    void logoutCoordinator().finally(() => setAuthed(false));
+  }
 
   function onChanged() {
     void queryClient.invalidateQueries({ queryKey: ["teachers"] });
@@ -201,20 +215,22 @@ export function CoordinatorDashboard() {
       <div className="dashboard">
       <header>
         <h1>Coordenação</h1>
-        <button
-          onClick={() => {
-            clearCoordinatorIdToken();
-            setAuthed(false);
-          }}
-        >
-          Sair
-        </button>
+        <button onClick={signOutAndReauth}>Sair</button>
       </header>
 
       <section>
         <h2>Professoras</h2>
         <AddTeacherForm onAdded={onChanged} />
         {teachersQuery.isLoading && <p>Carregando…</p>}
+        {teachersQuery.isError && (
+          <p className="hint" style={{ color: "#b00020", fontWeight: 700 }}>
+            Sua sessão não pôde ser confirmada e a lista de professoras não carregou — os dados continuam
+            intactos, é só entrar de novo.{" "}
+            <button type="button" onClick={signOutAndReauth}>
+              Entrar novamente
+            </button>
+          </p>
+        )}
         {teachersQuery.data && (
           <table className="teachers-table">
             <thead>

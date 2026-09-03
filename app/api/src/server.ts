@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { agendasRouter } from "./routes/agendas.js";
 import { aiRouter } from "./routes/ai.js";
+import { authRouter } from "./routes/auth.js";
 import { calendarEventsRouter } from "./routes/calendarEvents.js";
 import { classesRouter } from "./routes/classes.js";
 import { lessonWeeksRouter } from "./routes/lessonWeeks.js";
@@ -14,6 +15,7 @@ app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+app.use("/api/auth", authRouter);
 app.use("/api/teachers", teachersRouter);
 app.use("/api/classes", classesRouter);
 app.use("/api/lesson-weeks", lessonWeeksRouter);

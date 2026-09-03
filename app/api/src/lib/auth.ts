@@ -51,19 +51,25 @@ export async function findTeacherByToken(token: string) {
   return teacher && teacher.active ? teacher : null;
 }
 
-/** Exige um Google ID token válido pertencente a um e-mail em ADMIN_EMAILS. */
+/**
+ * Sessão própria da coordenação: criada uma vez no login (troca o ID token
+ * do Google, que expira em ~1h, por um token opaco nosso que não expira
+ * sozinho — só quando ela clicar em "Sair"). Ver POST /api/auth/login.
+ */
+export async function findCoordinatorBySession(sessionToken: string): Promise<GoogleUser | null> {
+  if (!sessionToken) return null;
+  const coordinator = await prisma.coordinator.findUnique({ where: { sessionToken } });
+  if (!coordinator) return null;
+  return { email: coordinator.email, name: coordinator.name ?? "", sub: coordinator.googleSub ?? "" };
+}
+
+/** Exige uma sessão de coordenação válida, via header X-Coordinator-Session. */
 export async function requireCoordinator(req: Request, res: Response, next: NextFunction) {
   try {
-    const authHeader = req.header("authorization") ?? "";
-    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!idToken) {
-      res.status(401).json({ error: "Login do Google obrigatório." });
-      return;
-    }
-
-    const user = await verifyGoogleIdToken(idToken);
-    if (!isAdminEmail(user.email)) {
-      res.status(403).json({ error: "Acesso de coordenação obrigatório." });
+    const sessionToken = req.header("x-coordinator-session") ?? "";
+    const user = await findCoordinatorBySession(sessionToken);
+    if (!user) {
+      res.status(401).json({ error: "Sessão de coordenação expirada ou inválida — entre novamente." });
       return;
     }
 
@@ -115,16 +121,10 @@ export async function requireTeacherOrCoordinator(req: Request, res: Response, n
       return;
     }
 
-    const authHeader = req.header("authorization") ?? "";
-    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!idToken) {
+    const sessionToken = req.header("x-coordinator-session") ?? "";
+    const user = await findCoordinatorBySession(sessionToken);
+    if (!user) {
       res.status(401).json({ error: "Login do professor ou da coordenação obrigatório." });
-      return;
-    }
-
-    const user = await verifyGoogleIdToken(idToken);
-    if (!isAdminEmail(user.email)) {
-      res.status(403).json({ error: "Acesso de coordenação obrigatório." });
       return;
     }
 

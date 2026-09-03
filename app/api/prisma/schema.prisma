@@ -25,11 +25,12 @@ enum AiJobStatus {
 }
 
 model Coordinator {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  googleSub String?  @unique
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  googleSub    String?  @unique
+  sessionToken String?  @unique
+  createdAt    DateTime @default(now())
 }
 
 model Teacher {

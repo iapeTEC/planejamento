@@ -1,5 +1,8 @@
 const TEACHER_TOKEN_KEY = "planejamento:teacherToken";
-const COORDINATOR_ID_TOKEN_KEY = "planejamento:coordinatorIdToken";
+// Sessão própria (não o ID token do Google, que expira em ~1h) — guardada em
+// localStorage de propósito, pra persistir entre reaberturas do navegador.
+// Só termina no logout explícito (POST /api/auth/logout).
+const COORDINATOR_SESSION_KEY = "planejamento:coordinatorSession";
 
 export function getTeacherToken(): string {
   const fromUrl = new URLSearchParams(window.location.search).get("t");
@@ -10,16 +13,33 @@ export function getTeacherToken(): string {
   return localStorage.getItem(TEACHER_TOKEN_KEY) ?? "";
 }
 
-export function setCoordinatorIdToken(idToken: string) {
-  sessionStorage.setItem(COORDINATOR_ID_TOKEN_KEY, idToken);
+export function getCoordinatorSession(): string {
+  return localStorage.getItem(COORDINATOR_SESSION_KEY) ?? "";
 }
 
-export function getCoordinatorIdToken(): string {
-  return sessionStorage.getItem(COORDINATOR_ID_TOKEN_KEY) ?? "";
+function setCoordinatorSession(sessionToken: string) {
+  localStorage.setItem(COORDINATOR_SESSION_KEY, sessionToken);
 }
 
-export function clearCoordinatorIdToken() {
-  sessionStorage.removeItem(COORDINATOR_ID_TOKEN_KEY);
+function clearCoordinatorSessionLocal() {
+  localStorage.removeItem(COORDINATOR_SESSION_KEY);
+}
+
+/** Troca o ID token do Google (curto) pela sessão própria (só termina no logout). */
+export async function loginCoordinator(googleIdToken: string): Promise<void> {
+  const { sessionToken } = await request<{ sessionToken: string }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ idToken: googleIdToken }),
+  });
+  setCoordinatorSession(sessionToken);
+}
+
+export async function logoutCoordinator(): Promise<void> {
+  try {
+    await request("/auth/logout", { method: "POST" });
+  } finally {
+    clearCoordinatorSessionLocal();
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -27,8 +47,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set("content-type", "application/json");
 
   const teacherToken = getTeacherToken();
-  const idToken = getCoordinatorIdToken();
-  if (idToken) headers.set("authorization", `Bearer ${idToken}`);
+  const coordinatorSession = getCoordinatorSession();
+  if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
   else if (teacherToken) headers.set("x-teacher-token", teacherToken);
 
   const resp = await fetch(`/api${path}`, { ...init, headers });
