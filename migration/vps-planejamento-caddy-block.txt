@@ -1,0 +1,37 @@
+# Bloco a adicionar em /home/siyum/app/Caddyfile na VPS, seguindo o mesmo
+# padrão de projeto.iape.tech / church.iape.tech (relay via socat + Caddy).
+# Porta escolhida seguindo a sequência já usada (22040/23040 projeto,
+# 22041/23041 onevoice27, 22042/23042 homework): planejamento = 22043/23043.
+
+planejamento.iape.tech {
+	encode zstd gzip
+	log {
+		output file /var/log/caddy/planejamento-access.log {
+			roll_size 10MB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-src https://accounts.google.com; script-src 'self' 'unsafe-inline' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://accounts.google.com; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+		-Server
+	}
+
+	reverse_proxy 172.19.0.1:23043
+}
+
+# Relay (rodar na VPS, mesmo padrão do projeto-relay/onevoice27-relay):
+# docker run -d --name planejamento-relay --network host --restart unless-stopped \
+#   alpine:latest sh -c "apk add --no-cache socat >/dev/null 2>&1 && exec socat TCP-LISTEN:23043,fork,reuseaddr,bind=172.19.0.1 TCP:127.0.0.1:22043"
+#
+# Isso espera que a VM mantenha um `ssh -R 22043:127.0.0.1:3300 siyum@78.111.90.91`
+# (mesmo mecanismo que já existe pras portas 22040/22041/22042 - achar o
+# serviço/config que mantém isso na VM e adicionar esta porta lá, em vez de
+# criar um túnel solto).
