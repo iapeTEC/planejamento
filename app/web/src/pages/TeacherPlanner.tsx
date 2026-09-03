@@ -189,9 +189,10 @@ export function TeacherPlanner() {
           {local.days.map((day, index) => (
             <tr key={day.date}>
               <td className="day-cell">
-                {day.weekday}
-                <br />
-                {new Date(day.date).getDate()}
+                <div className="day-badge">
+                  <span className="dayNum">{new Date(day.date).getDate()}</span>
+                  <span className="weekPill">{day.weekday}</span>
+                </div>
               </td>
               {fields.map((f) => (
                 <td key={f.key}>

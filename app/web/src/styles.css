@@ -36,11 +36,33 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f2f2f2
 .save-btn { background: var(--orange); color: #fff; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 700; }
 .agenda-link { color: var(--purple-1); font-weight: 700; text-decoration: none; }
 
-.lp-table { width: 100%; border-collapse: collapse; background: #fff; }
-.lp-table th, .lp-table td { border: 1px solid #d8dce3; padding: 8px; vertical-align: top; }
-.lp-table th { background: var(--navy); color: #fff; font-size: 13px; }
-.lp-table textarea { width: 100%; min-height: 70px; border: 1px solid #d8dce3; border-radius: 4px; padding: 6px; font: inherit; resize: vertical; }
-.day-cell { text-align: center; font-weight: 700; color: var(--navy); background: #fafbfc; white-space: nowrap; }
+.lp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  border: 2px solid var(--grid);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.lp-table th, .lp-table td { border-right: 2px solid var(--grid); border-bottom: 2px solid var(--grid); padding: 8px; vertical-align: top; }
+.lp-table th:last-child, .lp-table td:last-child { border-right: none; }
+.lp-table tbody tr:last-child td { border-bottom: none; }
+.lp-table th { background: var(--orange); color: #111; font-size: 13px; font-weight: 800; text-align: center; }
+.lp-table textarea { width: 100%; min-height: 70px; border: none; border-radius: 4px; padding: 6px; font: inherit; resize: vertical; }
+.lp-table textarea:focus { outline: none; box-shadow: inset 0 0 0 3px rgba(90, 43, 134, 0.18); }
+
+.day-cell { width: 92px; text-align: center; background: #fafbfc; padding: 6px; }
+.day-badge {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; height: 100%; min-height: 78px;
+}
+.dayNum { font-size: 30px; font-weight: 900; color: #000; line-height: 1; }
+.weekPill {
+  background: var(--navy); color: #fff; border-radius: 12px; padding: 3px 8px;
+  font-weight: 900; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+}
+
 .ppp-cell label, .skills-cell label { display: block; font-size: 11px; font-weight: 700; color: var(--purple-2); margin-bottom: 6px; }
 .ppp-cell textarea, .skills-cell textarea { min-height: 40px; }
 .agenda-cell button { margin-bottom: 6px; background: var(--purple-1); color: #fff; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
