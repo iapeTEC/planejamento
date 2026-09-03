@@ -205,6 +205,105 @@ function preparedRows(lesson: PreparedLesson) {
   });
 }
 
+function hashObject(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+async function verifyImport(source: ExportFile, lessons: PreparedLesson[]) {
+  const sourceTeachers = source.payload.teachers.map((teacher) => {
+    const assigned = new Set(classNames(teacher.classes));
+    lessons.filter((lesson) => lesson.legacyTeacherId === teacher.teacherId)
+      .forEach((lesson) => assigned.add(lesson.className));
+    return {
+      legacyId: teacher.teacherId,
+      name: teacher.name,
+      active: booleanValue(teacher.active),
+      isEnglishTeacher: booleanValue(teacher.isEnglishTeacher),
+      classes: [...assigned].sort(),
+      legacyLinkPreserved: /^prof-[a-z0-9_-]{12,}$/i.test(teacher.teacherId),
+    };
+  }).sort((a, b) => a.legacyId.localeCompare(b.legacyId));
+
+  const databaseTeachers = (await prisma.teacher.findMany({
+    where: { legacyId: { not: null } },
+    include: { classes: { include: { class: true } } },
+  })).map((teacher) => ({
+    legacyId: teacher.legacyId!,
+    name: teacher.name,
+    active: teacher.active,
+    isEnglishTeacher: teacher.isEnglishTeacher,
+    classes: teacher.classes.map((item) => item.class.name).sort(),
+    legacyLinkPreserved: teacher.magicToken === teacher.legacyId,
+  })).sort((a, b) => a.legacyId.localeCompare(b.legacyId));
+
+  const sourceWeeks = lessons.map((lesson) => ({
+    legacyTeacherId: lesson.legacyTeacherId,
+    className: lesson.className,
+    weekStart: lesson.weekStart,
+    legacyKey: lesson.legacyKey,
+    term: lesson.term,
+    coordMessage: lesson.coordMessage,
+    days: preparedRows(lesson).map((day) => ({
+      weekday: day.weekday,
+      date: day.date,
+      slot: day.slot,
+      isRecess: day.isRecess,
+      unitDay: day.unitDay,
+      conteudo: day.conteudo,
+      desenvolvimento: day.desenvolvimento,
+      materiais: day.materiais,
+      tarefas: day.tarefas,
+      observations: day.observations ?? null,
+    })),
+  })).sort((a, b) => `${a.legacyTeacherId}\u0000${a.className}\u0000${a.weekStart}`
+    .localeCompare(`${b.legacyTeacherId}\u0000${b.className}\u0000${b.weekStart}`));
+
+  const databaseWeeks = (await prisma.lessonWeek.findMany({
+    where: { legacyKey: { not: null } },
+    include: {
+      teacher: { select: { legacyId: true } },
+      class: { select: { name: true } },
+      days: { orderBy: [{ date: "asc" }, { slot: "asc" }] },
+    },
+  })).map((week) => ({
+    legacyTeacherId: week.teacher.legacyId!,
+    className: week.class.name,
+    weekStart: week.weekStart.toISOString().slice(0, 10),
+    legacyKey: week.legacyKey!,
+    term: week.term,
+    coordMessage: week.coordMessage,
+    days: week.days.map((day) => ({
+      weekday: day.weekday,
+      date: day.date.toISOString().slice(0, 10),
+      slot: day.slot,
+      isRecess: day.isRecess,
+      unitDay: day.unitDay,
+      conteudo: day.conteudo,
+      desenvolvimento: day.desenvolvimento,
+      materiais: day.materiais,
+      tarefas: day.tarefas,
+      observations: day.observations ?? null,
+    })),
+  })).sort((a, b) => `${a.legacyTeacherId}\u0000${a.className}\u0000${a.weekStart}`
+    .localeCompare(`${b.legacyTeacherId}\u0000${b.className}\u0000${b.weekStart}`));
+
+  const sourceTeacherHash = hashObject(sourceTeachers);
+  const databaseTeacherHash = hashObject(databaseTeachers);
+  const sourceLessonHash = hashObject(sourceWeeks);
+  const databaseLessonHash = hashObject(databaseWeeks);
+  const agendas = await prisma.agenda.count({ where: { lessonWeek: { legacyKey: { not: null } } } });
+
+  return {
+    matches: sourceTeacherHash === databaseTeacherHash && sourceLessonHash === databaseLessonHash,
+    teachers: { source: sourceTeachers.length, database: databaseTeachers.length, sourceHash: sourceTeacherHash, databaseHash: databaseTeacherHash },
+    lessonWeeks: { source: sourceWeeks.length, database: databaseWeeks.length, sourceHash: sourceLessonHash, databaseHash: databaseLessonHash },
+    lessonDays: { source: sourceWeeks.reduce((sum, week) => sum + week.days.length, 0), database: databaseWeeks.reduce((sum, week) => sum + week.days.length, 0) },
+    agendas,
+    preservedLegacyLinks: databaseTeachers.filter((teacher) => teacher.legacyLinkPreserved).length,
+    rotatedUnsafeLinks: databaseTeachers.filter((teacher) => !teacher.legacyLinkPreserved).length,
+  };
+}
+
 async function applyImport(source: ExportFile, lessons: PreparedLesson[]) {
   return prisma.$transaction(async (tx) => {
     const classMap = new Map<string, { id: string; level: ClassLevel }>();
@@ -333,6 +432,7 @@ async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
   const offline = args.includes("--offline");
+  const verify = args.includes("--verify");
   const sourcePath = args.find((arg) => !arg.startsWith("--"));
   if (!sourcePath) throw new Error("Uso: legacy:import <snapshot.json> [--apply]");
   if (apply && offline) throw new Error("--apply e --offline não podem ser usados juntos.");
@@ -377,6 +477,11 @@ async function main() {
       agendas: await prisma.agenda.count(),
       calendarEvents: await prisma.calendarEvent.count(),
     };
+  }
+  if (verify || apply) {
+    const verification = await verifyImport(source, prepared.lessons);
+    report.verification = verification;
+    if (!verification.matches) throw new Error(JSON.stringify(report, null, 2));
   }
 
   console.log(JSON.stringify(report, null, 2));
