@@ -5,31 +5,37 @@ import { requireTeacher, requireTeacherOrCoordinator } from "../lib/auth.js";
 
 export const lessonWeeksRouter = Router();
 
+// .nullable() além de .optional(): o que volta do banco pra campos vazios é
+// `null` (Prisma), não `undefined` — e a professora salva de volta o mesmo
+// dia que acabou de carregar. Sem aceitar null aqui, qualquer save de uma
+// semana com algum campo vazio (praticamente todas) dava 400.
 const dayInput = z.object({
   weekday: z.string(),
   date: z.string(), // YYYY-MM-DD
   slot: z.number().int().default(0),
   isRecess: z.boolean().optional(),
-  unitDay: z.string().optional(),
-  conteudo: z.string().optional(),
-  desenvolvimento: z.string().optional(),
-  materiais: z.string().optional(),
-  tarefas: z.string().optional(),
-  pppPresentation: z.string().optional(),
-  pppPractice: z.string().optional(),
-  pppProduction: z.string().optional(),
-  skillListening: z.string().optional(),
-  skillWriting: z.string().optional(),
-  skillReading: z.string().optional(),
-  skillSpeaking: z.string().optional(),
-  observations: z.record(z.string(), z.string()).optional(),
+  unitDay: z.string().nullable().optional(),
+  conteudo: z.string().nullable().optional(),
+  desenvolvimento: z.string().nullable().optional(),
+  materiais: z.string().nullable().optional(),
+  tarefas: z.string().nullable().optional(),
+  pppPresentation: z.string().nullable().optional(),
+  pppPractice: z.string().nullable().optional(),
+  pppProduction: z.string().nullable().optional(),
+  skillListening: z.string().nullable().optional(),
+  skillWriting: z.string().nullable().optional(),
+  skillReading: z.string().nullable().optional(),
+  skillSpeaking: z.string().nullable().optional(),
+  agendaHtml: z.string().nullable().optional(),
+  agendaGeneratedByAi: z.boolean().optional(),
+  observations: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 const weekInput = z.object({
   classId: z.string().uuid(),
   term: z.string(),
   weekStart: z.string(), // YYYY-MM-DD (segunda-feira)
-  coordMessage: z.string().optional(),
+  coordMessage: z.string().nullable().optional(),
   days: z.array(dayInput),
 });
 
@@ -85,6 +91,9 @@ lessonWeeksRouter.put("/", requireTeacher, async (req, res) => {
     });
 
     for (const day of days) {
+      // Prisma exige undefined (nao null) pra "nao mexer" num campo Json?.
+      const { observations, ...dayRest } = day;
+      const data = { ...dayRest, date: new Date(day.date), observations: observations ?? undefined };
       await tx.lessonDay.upsert({
         where: {
           lessonWeekId_date_slot: {
@@ -93,8 +102,8 @@ lessonWeeksRouter.put("/", requireTeacher, async (req, res) => {
             slot: day.slot,
           },
         },
-        create: { ...day, date: new Date(day.date), lessonWeekId: upserted.id },
-        update: { ...day, date: new Date(day.date) },
+        create: { ...data, lessonWeekId: upserted.id },
+        update: data,
       });
     }
 
@@ -129,10 +138,14 @@ lessonWeeksRouter.patch("/days/:id", requireTeacherOrCoordinator, async (req, re
     return;
   }
 
-  const { date, ...rest } = parsed.data;
+  const { date, observations, ...rest } = parsed.data;
   const day = await prisma.lessonDay.update({
     where: { id: req.params.id },
-    data: { ...rest, ...(date ? { date: new Date(date) } : {}) },
+    data: {
+      ...rest,
+      ...(date ? { date: new Date(date) } : {}),
+      ...(observations !== undefined ? { observations: observations ?? undefined } : {}),
+    },
   });
 
   res.json(day);

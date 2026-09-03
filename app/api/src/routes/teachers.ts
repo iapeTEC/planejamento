@@ -7,8 +7,8 @@ export const teachersRouter = Router();
 
 const teacherInput = z.object({
   name: z.string().min(1),
-  phone: z.string().optional(),
-  photoUrl: z.string().url().optional(),
+  phone: z.string().nullable().optional(),
+  photoUrl: z.string().url().nullable().optional(),
   isEnglishTeacher: z.boolean().optional(),
   active: z.boolean().optional(),
   classIds: z.array(z.string().uuid()).min(1),

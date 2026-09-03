@@ -7,7 +7,7 @@ export const agendasRouter = Router();
 
 const agendaInput = z.object({
   template: z.enum(["infantil", "fundamental"]),
-  imageUrl: z.string().url().optional(),
+  imageUrl: z.string().url().nullable().optional(),
 });
 
 async function canAccessWeek(lessonWeekId: string, teacherId?: string): Promise<boolean> {
