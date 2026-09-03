@@ -23,7 +23,12 @@ function mergeDays(base: LessonDay[], weekStart: Date): LessonDay[] {
 
 export function TeacherPlanner() {
   const queryClient = useQueryClient();
-  const { data: teacher } = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const { data: teacher, isError: meError, error: meErrorDetail } = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me,
+    retry: false,
+    enabled: Boolean(getTeacherToken()),
+  });
 
   const [classId, setClassId] = useState<string>("");
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
@@ -69,6 +74,22 @@ export function TeacherPlanner() {
   useEffect(() => setLocal(draft), [draft]);
 
   const { status, scheduleSave, flush } = useAutosave(local);
+
+  if (!getTeacherToken()) {
+    return (
+      <p className="loading">
+        Abra pelo link enviado pela coordenação para acessar seu planejamento.
+      </p>
+    );
+  }
+
+  if (meError) {
+    return (
+      <p className="loading">
+        {meErrorDetail instanceof Error ? meErrorDetail.message : "Não foi possível carregar seu cadastro."}
+      </p>
+    );
+  }
 
   if (!teacher) return <p className="loading">Carregando…</p>;
 
