@@ -222,7 +222,7 @@ async function applyImport(source: ExportFile, lessons: PreparedLesson[]) {
     let rotatedLegacyTokens = 0;
     for (const sourceTeacher of source.payload.teachers) {
       const existing = await tx.teacher.findUnique({ where: { legacyId: sourceTeacher.teacherId } });
-      const safeLegacyToken = /^prof-[0-9a-f]{16}$/i.test(sourceTeacher.teacherId);
+      const safeLegacyToken = /^prof-[a-z0-9_-]{12,}$/i.test(sourceTeacher.teacherId);
       if (!safeLegacyToken && !existing) rotatedLegacyTokens += 1;
       const teacher = await tx.teacher.upsert({
         where: { legacyId: sourceTeacher.teacherId },
@@ -238,6 +238,7 @@ async function applyImport(source: ExportFile, lessons: PreparedLesson[]) {
           name: sourceTeacher.name,
           active: booleanValue(sourceTeacher.active),
           isEnglishTeacher: booleanValue(sourceTeacher.isEnglishTeacher),
+          ...(safeLegacyToken ? { magicToken: sourceTeacher.teacherId } : {}),
         },
       });
       teacherMap.set(sourceTeacher.teacherId, teacher.id);
