@@ -63,8 +63,17 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f2f2f2
   font-weight: 900; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
 }
 
-.ppp-cell label, .skills-cell label { display: block; font-size: 11px; font-weight: 700; color: var(--purple-2); margin-bottom: 6px; }
-.ppp-cell textarea, .skills-cell textarea { min-height: 40px; }
+.dev-english-cell { min-width: 220px; }
+.dev-english-cell > textarea { margin-bottom: 8px; }
+.ppp-block, .skills-block {
+  border-top: 1px dashed #d8dce3; padding-top: 6px; margin-top: 6px;
+}
+.ppp-block > strong, .skills-block > strong {
+  display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--purple-1); margin-bottom: 4px;
+}
+.ppp-block label, .skills-block label { display: block; font-size: 11px; font-weight: 700; color: var(--purple-2); margin-bottom: 6px; }
+.ppp-block textarea, .skills-block textarea { min-height: 40px; }
 .agenda-cell button { margin-bottom: 6px; background: var(--purple-1); color: #fff; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
 
 .teachers-table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 12px; }

@@ -165,7 +165,8 @@ export function TeacherPlanner() {
 
       {teacher.isEnglishTeacher && (
         <p className="hint">
-          Turma de inglês: preencha PPP (Presentation/Practice/Production) e as habilidades trabalhadas em cada dia.
+          Turma de inglês: dentro de "Desenvolvimento da aula", preencha o PPP (Presentation/Practice/Production) e as
+          habilidades trabalhadas em cada dia.
         </p>
       )}
 
@@ -176,12 +177,6 @@ export function TeacherPlanner() {
             {fields.map((f) => (
               <th key={f.key}>{f.label}</th>
             ))}
-            {teacher.isEnglishTeacher && (
-              <>
-                <th>PPP</th>
-                <th>Skills</th>
-              </>
-            )}
             <th>Agenda</th>
           </tr>
         </thead>
@@ -194,42 +189,50 @@ export function TeacherPlanner() {
                   <span className="weekPill">{day.weekday}</span>
                 </div>
               </td>
-              {fields.map((f) => (
-                <td key={f.key}>
-                  <textarea
-                    value={(day[f.key] as string) ?? ""}
-                    onChange={(e) => updateDay(index, f.key, e.target.value)}
-                    onBlur={() => void flush()}
-                  />
-                </td>
-              ))}
-              {teacher.isEnglishTeacher && (
-                <>
-                  <td className="ppp-cell">
-                    {(["pppPresentation", "pppPractice", "pppProduction"] as const).map((key) => (
-                      <label key={key}>
-                        {key === "pppPresentation" ? "Presentation" : key === "pppPractice" ? "Practice" : "Production"}
-                        <textarea
-                          value={(day[key] as string) ?? ""}
-                          onChange={(e) => updateDay(index, key, e.target.value)}
-                          onBlur={() => void flush()}
-                        />
-                      </label>
-                    ))}
+              {fields.map((f) =>
+                f.key === "desenvolvimento" && teacher.isEnglishTeacher ? (
+                  <td key={f.key} className="dev-english-cell">
+                    <textarea
+                      value={day.desenvolvimento ?? ""}
+                      onChange={(e) => updateDay(index, "desenvolvimento", e.target.value)}
+                      onBlur={() => void flush()}
+                      placeholder="Desenvolvimento da aula…"
+                    />
+                    <div className="ppp-block">
+                      <strong>PPP</strong>
+                      {(["pppPresentation", "pppPractice", "pppProduction"] as const).map((key) => (
+                        <label key={key}>
+                          {key === "pppPresentation" ? "Presentation" : key === "pppPractice" ? "Practice" : "Production"}
+                          <textarea
+                            value={(day[key] as string) ?? ""}
+                            onChange={(e) => updateDay(index, key, e.target.value)}
+                            onBlur={() => void flush()}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="skills-block">
+                      {(["skillListening", "skillWriting", "skillReading", "skillSpeaking"] as const).map((key) => (
+                        <label key={key}>
+                          {key.replace("skill", "")}
+                          <textarea
+                            value={(day[key] as string) ?? ""}
+                            onChange={(e) => updateDay(index, key, e.target.value)}
+                            onBlur={() => void flush()}
+                          />
+                        </label>
+                      ))}
+                    </div>
                   </td>
-                  <td className="skills-cell">
-                    {(["skillListening", "skillWriting", "skillReading", "skillSpeaking"] as const).map((key) => (
-                      <label key={key}>
-                        {key.replace("skill", "")}
-                        <textarea
-                          value={(day[key] as string) ?? ""}
-                          onChange={(e) => updateDay(index, key, e.target.value)}
-                          onBlur={() => void flush()}
-                        />
-                      </label>
-                    ))}
+                ) : (
+                  <td key={f.key}>
+                    <textarea
+                      value={(day[f.key] as string) ?? ""}
+                      onChange={(e) => updateDay(index, f.key, e.target.value)}
+                      onBlur={() => void flush()}
+                    />
                   </td>
-                </>
+                ),
               )}
               <td className="agenda-cell">
                 <button type="button" onClick={() => void generateAgendaWithAi(index)}>
