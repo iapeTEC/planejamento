@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, getCoordinatorSession, getTeacherToken } from "../lib/api";
+import { api, getCoordinatorSession, getTeacherToken, hasUrlTeacherToken } from "../lib/api";
 
 interface AgendaResponse {
   id: string;
@@ -19,7 +19,11 @@ function authHeaders(): HeadersInit {
   const teacherToken = getTeacherToken();
   const coordinatorSession = getCoordinatorSession();
   const headers = new Headers();
-  if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
+  // Mesma prioridade de app.ts: se ESTA página foi aberta com ?t=..., age
+  // como aquela professora mesmo que exista uma sessão de coordenação salva
+  // no navegador (localStorage é compartilhado entre abas).
+  if (hasUrlTeacherToken() && teacherToken) headers.set("x-teacher-token", teacherToken);
+  else if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
   else if (teacherToken) headers.set("x-teacher-token", teacherToken);
   return headers;
 }

@@ -13,6 +13,20 @@ export function getTeacherToken(): string {
   return localStorage.getItem(TEACHER_TOKEN_KEY) ?? "";
 }
 
+/**
+ * True quando ESTA página foi aberta com ?t=... na URL — ou seja, quem está
+ * vendo pediu explicitamente pra agir como aquela professora agora (inclui a
+ * coordenadora abrindo o link de uma professora numa aba nova). Isso importa
+ * porque localStorage é compartilhado entre abas: sem essa checagem, a
+ * sessão da coordenadora (guardada em localStorage) "vazava" pra qualquer
+ * aba nova, mesmo uma aberta a partir de um link de professora, fazendo a
+ * tela do planejamento tentar entrar como coordenadora e falhar com "Link do
+ * professor inválido".
+ */
+export function hasUrlTeacherToken(): boolean {
+  return Boolean(new URLSearchParams(window.location.search).get("t"));
+}
+
 export function getCoordinatorSession(): string {
   return localStorage.getItem(COORDINATOR_SESSION_KEY) ?? "";
 }
@@ -48,7 +62,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const teacherToken = getTeacherToken();
   const coordinatorSession = getCoordinatorSession();
-  if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
+  if (hasUrlTeacherToken() && teacherToken) headers.set("x-teacher-token", teacherToken);
+  else if (coordinatorSession) headers.set("x-coordinator-session", coordinatorSession);
   else if (teacherToken) headers.set("x-teacher-token", teacherToken);
 
   const resp = await fetch(`/api${path}`, { ...init, headers });
