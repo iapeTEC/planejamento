@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { api, getTeacherToken, type LessonDay } from "../lib/api";
@@ -66,6 +66,12 @@ export function TeacherPlanner() {
     queryKey: ["lesson-week", classId, weekStartIso],
     queryFn: () => api.lessonWeek(classId, weekStartIso),
     enabled: Boolean(classId),
+    // Nunca revalida sozinho enquanto a tela está aberta — evita qualquer
+    // risco de sobrescrever o que está sendo digitado. Só recarrega quando a
+    // professora troca de turma/semana de propósito.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
   });
 
   useEffect(() => {
@@ -79,23 +85,53 @@ export function TeacherPlanner() {
     }
   }, [classId, weekStart, queryClient]);
 
-  const draft: WeekDraft = useMemo(() => {
-    const slotsPerDay = teacher?.isEnglishTeacher ? 1 : 6;
-    const fromDraft = classId ? loadDraft(classId, weekStartIso) : null;
-    if (fromDraft) return fromDraft;
-    return {
-      classId,
-      term: weekQuery.data?.term ?? "1",
-      weekStart: weekStartIso,
-      coordMessage: weekQuery.data?.coordMessage ?? "",
-      days: weekQuery.data
-        ? mergeDays(weekQuery.data.days, weekStart, slotsPerDay)
-        : emptyDays(weekStart, slotsPerDay),
-    };
-  }, [classId, weekStartIso, weekQuery.data, weekStart, teacher?.isEnglishTeacher]);
+  const slotsPerDay = teacher?.isEnglishTeacher ? 1 : 6;
+  const weekKey = `${classId}|${weekStartIso}|${slotsPerDay}`;
+  // Rastreia pra qual "chave" (turma+semana) o `local` já está carregado, pra
+  // nunca deixar uma revalidação em segundo plano do React Query (troca de
+  // aba, volta da tela bloqueada, reconexão) sobrescrever o que a professora
+  // está digitando. Isso é o que causava perda de conteúdo digitado depois
+  // de um tempo — o efeito antigo resetava `local` toda vez que o resultado
+  // da query mudava de referência, mesmo sem o usuário ter feito nada.
+  const hydratedKeyRef = useRef<string | null>(null);
+  const [local, setLocal] = useState<WeekDraft>(() => ({
+    classId,
+    term: "1",
+    weekStart: weekStartIso,
+    coordMessage: "",
+    days: emptyDays(weekStart, slotsPerDay),
+  }));
 
-  const [local, setLocal] = useState<WeekDraft>(draft);
-  useEffect(() => setLocal(draft), [draft]);
+  // Troca de turma/semana: mostra algo na hora (rascunho local se existir,
+  // senão em branco) — não espera a rede, pra trocar instantaneamente.
+  useEffect(() => {
+    if (!classId) return;
+    const stored = loadDraft(classId, weekStartIso);
+    if (stored) {
+      setLocal(stored);
+      hydratedKeyRef.current = weekKey; // já tem edição local não sincronizada — não deixa o servidor pisar em cima
+    } else {
+      setLocal({ classId, term: "1", weekStart: weekStartIso, coordMessage: "", days: emptyDays(weekStart, slotsPerDay) });
+      hydratedKeyRef.current = null; // ainda precisa preencher com o que vier do servidor
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey]);
+
+  // Preenche com os dados reais do servidor UMA VEZ por turma/semana — nunca
+  // de novo depois disso pra essa mesma chave, mesmo que o React Query
+  // revalide em segundo plano.
+  useEffect(() => {
+    if (!weekQuery.data) return;
+    if (hydratedKeyRef.current === weekKey) return;
+    setLocal({
+      classId,
+      term: weekQuery.data.term,
+      weekStart: weekStartIso,
+      coordMessage: weekQuery.data.coordMessage ?? "",
+      days: mergeDays(weekQuery.data.days, weekStart, slotsPerDay),
+    });
+    hydratedKeyRef.current = weekKey;
+  }, [weekQuery.data, weekKey, classId, weekStartIso, weekStart, slotsPerDay]);
 
   const { status, scheduleSave, flush } = useAutosave(local);
 
@@ -163,13 +199,6 @@ export function TeacherPlanner() {
     if (key === "desenvolvimento" && currentTeacher.isEnglishTeacher) {
       return (
         <div className={className}>
-          <RichTextEditor
-            className="rich"
-            value={day.desenvolvimento ?? ""}
-            onChange={(value) => updateDay(index, "desenvolvimento", value)}
-            onBlur={() => void flush()}
-            aria-label="Desenvolvimento da aula"
-          />
           <div className="ppp-block">
             <strong>PPP</strong>
             {(["pppPresentation", "pppPractice", "pppProduction"] as const).map((keyName) => (
@@ -184,7 +213,6 @@ export function TeacherPlanner() {
             ))}
           </div>
           <div className="skills-block">
-            <strong>Skills</strong>
             {(["skillListening", "skillWriting", "skillReading", "skillSpeaking"] as const).map((keyName) => (
               <label key={keyName}>
                 {keyName.replace("skill", "")}
