@@ -1,5 +1,46 @@
 # Planejamento IAPE → SaaS escolar — Plano completo e estado atual
 
+## Status em 2026-09-03 (mais recente): IA ligada de verdade + Agenda vazia corrigida
+
+**Botão "Gerar por IA" está funcionando de ponta a ponta em produção.**
+
+- `app/deploy-vm/codex-bridge/server.mjs`: serviço HTTP mínimo rodando fora do
+  Docker na própria VM (`172.21.0.1:3301`, systemd `codex-bridge.service`),
+  que chama `codex exec --model gpt-5.6-luna -c model_reasoning_effort=medium
+  --sandbox read-only`. Esse é o modelo "luna médio" pedido pela Norma — o
+  mais barato/rápido do Codex, evita gastar a franquia dos modelos caros.
+- **Bug encontrado e corrigido**: o serviço ficava ~90s travado e falhava com
+  `ENOENT` no arquivo de saída. Causa raiz (confirmada reproduzindo sob um
+  `systemd-run` transiente): `execFile` do Node deixa o `stdin` do processo
+  filho como um pipe aberto por padrão, nunca fechado — e o `codex exec` fica
+  esperando esse EOF ("Reading additional input from stdin...") pra sempre.
+  Só "morria" porque nosso próprio `TIMEOUT_MS=90000` matava o processo, e o
+  wrapper do Codex saía com código 0 ao receber o sinal, escondendo o erro
+  real atrás de um ENOENT inofensivo. Testes manuais via SSH sempre
+  funcionaram rápido porque usavam `< /dev/null` (EOF imediato) — por isso o
+  bug só apareceu via systemd. Corrigido com `child.stdin?.end()` logo após
+  criar o processo filho (commit `e374e82`).
+- `app/deploy-vm/.env` na VM agora tem `AI_ENDPOINT=http://172.21.0.1:3301/generate`
+  e `AI_MODEL=gpt-5.6-luna` (container `api` recriado pra pegar os valores).
+- `app/api/src/routes/ai.ts`: prompt reforçado com exemplos reais do formato
+  esperado (frase telegráfica, sem markdown, sem repetir a disciplina) +
+  sanitizador server-side (`sanitizeAiText`) como rede de segurança, já que o
+  modelo nem sempre obedece instrução livre (commit `3555c92`).
+- Testado de ponta a ponta contra dias de aula reais da professora Bruno
+  Agostinho (curl direto no endpoint e clique real no botão pelo navegador em
+  `planejamento.iape.tech`) — texto gerado ficou limpo e correto nos dois
+  casos.
+
+**Agenda vazia agora aparece pronta pra receber conteúdo** — o bug era que
+`GET /api/agendas/:lessonWeekId` devolvia `null` sempre que ainda não existia
+uma linha `Agenda` no banco (ou seja, sempre, porque nada nunca criava essa
+linha automaticamente). `app/api/src/routes/agendas.ts` agora sempre devolve
+a `LessonWeek` + dias com um `template` padrão calculado a partir do nível da
+turma, mesmo sem `Agenda` salva ainda. `app/web/src/pages/AgendaPage.tsx` foi
+reconstruída pra bater com os PDFs reais do colégio (cabeçalho, título,
+grade Seg-Qui em 2 colunas, Sexta + caixa de Recado com upload de imagem).
+Verificado visualmente no navegador.
+
 ## Status em 2026-09-03: migrado da VPS temporária pra VM da escola (definitivo)
 
 `planejamento.iape.tech` agora roda de verdade na VM `iape` (`srv-school`),
@@ -78,8 +119,8 @@ codando, mas é bloqueante pra ir ao ar):
    deliberada da Fase 4, ainda não corrigida).
 6. Script de migração real dos dados das planilhas pro Postgres (Fase 3
    descreve o plano, ainda não escrito).
-7. Ligar a IA de verdade (Codex na VM) — endpoint já pronto, só falta o
-   Codex instalado + `AI_ENDPOINT` configurado.
+7. ~~Ligar a IA de verdade (Codex na VM)~~ — feito em 2026-09-03, ver seção
+   no topo deste documento.
 8. Decidir e implementar a exposição pública (DNS `planejamento.iape.tech`
    → algo que alcance a VM pelo túnel) — ver Fase 6 mais abaixo.
 
