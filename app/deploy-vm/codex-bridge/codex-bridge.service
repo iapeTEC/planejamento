@@ -10,6 +10,8 @@ WorkingDirectory=/home/iape/planejamento-app/app/deploy-vm/codex-bridge
 ExecStart=/usr/bin/node server.mjs
 Restart=always
 RestartSec=5
+Environment=HOME=/home/iape
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PORT=3301
 Environment=HOST=172.21.0.1
 Environment=CODEX_MODEL=gpt-5.6-luna
