@@ -71,6 +71,10 @@ export function SupervisorPage() {
   const [color, setColor] = useState("#e21f1f");
   const [thickness, setThickness] = useState(4);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // O canvas fica por cima de tudo pra desenhar — se ficasse sempre
+  // "clicável" nunca daria pra selecionar texto embaixo pra anotar. Por
+  // isso alterna entre os dois modos.
+  const [mode, setMode] = useState<"draw" | "select">("select");
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [pendingRect, setPendingRect] = useState<DOMRect | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -248,7 +252,15 @@ export function SupervisorPage() {
   return (
     <div className="supervisor-page">
       <div className="supervisor-toolbar no-print">
-        <strong>Caneta do Supervisor:</strong>
+        <div className="mode-toggle">
+          <button type="button" className={mode === "select" ? "mode-active" : ""} onClick={() => setMode("select")}>
+            🖊️ Selecionar texto
+          </button>
+          <button type="button" className={mode === "draw" ? "mode-active" : ""} onClick={() => setMode("draw")}>
+            ✏️ Desenhar
+          </button>
+        </div>
+        <strong>Caneta:</strong>
         <label>
           Cor <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
         </label>
@@ -334,6 +346,7 @@ export function SupervisorPage() {
         <canvas
           ref={canvasRef}
           className="supervisor-canvas"
+          style={{ pointerEvents: mode === "draw" ? "auto" : "none" }}
           onPointerDown={startDraw}
           onPointerMove={moveDraw}
           onPointerUp={endDraw}
