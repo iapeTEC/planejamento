@@ -15,13 +15,26 @@ function buildPrompt(day: {
 }): string {
   // A Agenda já mostra "Disciplina: " como rótulo em negrito antes desse
   // texto (ver AgendaPage.tsx) — o modelo só precisa escrever o miolo do
-  // bullet, no estilo direto dos exemplos reais do colégio (ex.: "Ser
-  // honesto – Cap. 22." ou "Sistemas de controle. Págs.: 139 e 140").
+  // bullet, puro texto, no estilo direto dos exemplos reais do colégio.
   return [
-    "Você escreve o resumo de UM item da agenda semanal que vai pros pais dos",
-    "alunos, a partir do planejamento de aula abaixo. Responda só com esse",
-    "resumo (uma frase curta, sem repetir o nome da disciplina, sem saudação,",
-    "sem markdown) — nada além do texto que vai direto no boletim.",
+    "Você escreve o miolo de UM item da agenda semanal impressa que vai pros",
+    "pais dos alunos, a partir do planejamento de aula abaixo. Esse texto",
+    "aparece direto após o nome da disciplina (que já vem em negrito antes",
+    "dele), então NUNCA repita a disciplina/unidade.",
+    "",
+    "Exemplos REAIS de como esse texto deve ficar (copie exatamente esse",
+    "estilo, sem exceção):",
+    '- "Ser honesto – Cap. 22."',
+    '- "Sistemas de controle. Págs.: 139 e 140."',
+    '- "Multiplicação de números decimais. Págs.: 197 e 198."',
+    '- "Leitura complementar: A joaninha. Pág.: 45."',
+    "",
+    "Regras obrigatórias:",
+    "- Responda em português, em UMA única linha, sem quebra de linha.",
+    "- NUNCA use markdown: nada de **, *, -, #, listas ou títulos.",
+    "- NUNCA use saudação, introdução ou explicação sobre o que você fez.",
+    "- Seja telegráfico: conteúdo + página/capítulo quando houver, só isso.",
+    "- Responda só com o texto final, nada antes nem depois.",
     "",
     `Disciplina/Unidade: ${day.unitDay || "-"}`,
     `Conteúdo: ${day.conteudo || "-"}`,
@@ -50,7 +63,22 @@ async function callAiModel(prompt: string): Promise<string> {
 
   const data = (await resp.json()) as { text?: string };
   if (!data.text) throw new Error("Resposta da IA sem conteúdo.");
-  return data.text;
+  return sanitizeAiText(data.text);
+}
+
+// Rede de segurança: mesmo com o prompt pedindo texto puro, o modelo às
+// vezes devolve markdown ou várias linhas. Isso vai direto pro papel
+// impresso da Agenda, então limpamos aqui.
+function sanitizeAiText(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.replace(/^[-*#\s]+/, "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .trim();
 }
 
 // POST /api/lesson-days/:id/agenda/generate — botão "Gerar por IA" da coluna Agenda.
