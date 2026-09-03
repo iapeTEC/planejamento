@@ -13,21 +13,28 @@ function buildPrompt(day: {
   desenvolvimento: string | null;
   tarefas: string | null;
 }): string {
+  // A Agenda já mostra "Disciplina: " como rótulo em negrito antes desse
+  // texto (ver AgendaPage.tsx) — o modelo só precisa escrever o miolo do
+  // bullet, no estilo direto dos exemplos reais do colégio (ex.: "Ser
+  // honesto – Cap. 22." ou "Sistemas de controle. Págs.: 139 e 140").
   return [
-    "Escreva o texto da Agenda semanal para os pais, no estilo direto e",
-    "acolhedor usado pelo colégio (bullets por disciplina, sem jargão técnico),",
-    "a partir deste planejamento do dia:",
-    `Disciplina/Unidade: ${day.unitDay ?? "-"}`,
-    `Conteúdo: ${day.conteudo ?? "-"}`,
-    `Desenvolvimento da aula: ${day.desenvolvimento ?? "-"}`,
-    `Tarefa de casa: ${day.tarefas ?? "-"}`,
+    "Você escreve o resumo de UM item da agenda semanal que vai pros pais dos",
+    "alunos, a partir do planejamento de aula abaixo. Responda só com esse",
+    "resumo (uma frase curta, sem repetir o nome da disciplina, sem saudação,",
+    "sem markdown) — nada além do texto que vai direto no boletim.",
+    "",
+    `Disciplina/Unidade: ${day.unitDay || "-"}`,
+    `Conteúdo: ${day.conteudo || "-"}`,
+    `Desenvolvimento da aula: ${day.desenvolvimento || "-"}`,
+    `Tarefa de casa: ${day.tarefas || "-"}`,
   ].join("\n");
 }
 
 /**
- * Chama o Codex rodando na VM iape. Ainda não conectado de verdade — falta o
- * Codex ser instalado na VM e a forma de invocação (CLI via SSH ou HTTP) ser
- * definida. Ver migration/NEXT_STEPS.md, Fase 5.
+ * Chama o "codex-bridge" (serviço na própria VM, fora do Docker, que roda
+ * `codex exec --model gpt-5.6-luna -c model_reasoning_effort=medium`) via
+ * HTTP — só alcançável pela rede interna do Docker (172.21.0.1), nunca
+ * exposto pra fora. Ver migration/NEXT_STEPS.md, Fase 5.
  */
 async function callAiModel(prompt: string): Promise<string> {
   if (!AI_ENDPOINT) {

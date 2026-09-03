@@ -1,0 +1,19 @@
+[Unit]
+Description=Codex bridge (HTTP -> codex exec, model gpt-5.6-luna) for planejamento
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=iape
+WorkingDirectory=/home/iape/planejamento-app/app/deploy-vm/codex-bridge
+ExecStart=/usr/bin/node server.mjs
+Restart=always
+RestartSec=5
+Environment=PORT=3301
+Environment=HOST=172.21.0.1
+Environment=CODEX_MODEL=gpt-5.6-luna
+Environment=CODEX_REASONING_EFFORT=medium
+
+[Install]
+WantedBy=multi-user.target
