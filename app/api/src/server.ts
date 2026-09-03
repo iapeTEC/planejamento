@@ -12,8 +12,8 @@ import { teachersRouter } from "./routes/teachers.js";
 
 const app = express();
 app.use(cors());
-// 10mb pra caber o PNG do rabisco do Supervisor sem apertar.
-app.use(express.json({ limit: "10mb" }));
+// 20mb pra caber o PNG do rabisco do Supervisor e fotos enviadas na Agenda.
+app.use(express.json({ limit: "20mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

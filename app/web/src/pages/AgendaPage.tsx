@@ -1,17 +1,28 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, getCoordinatorSession, getTeacherToken, hasUrlTeacherToken } from "../lib/api";
 
-interface AgendaResponse {
+interface AgendaDay {
   id: string;
+  weekday: string;
+  date: string;
+  slot: number;
+  isRecess: boolean;
+  unitDay: string | null;
+  agendaHtml: string | null;
+  agendaGeneratedByAi: boolean;
+}
+
+interface AgendaResponse {
+  id: string | null;
   template: "infantil" | "fundamental";
   imageUrl: string | null;
   lessonWeek: {
     weekStart: string;
     teacher: { name: string };
     class: { name: string };
-    days: { id: string; weekday: string; date: string; agendaHtml: string | null }[];
+    days: AgendaDay[];
   };
 }
 
@@ -28,25 +39,45 @@ function authHeaders(): HeadersInit {
   return headers;
 }
 
-async function fetchAgenda(lessonWeekId: string): Promise<AgendaResponse | null> {
+async function fetchAgenda(lessonWeekId: string): Promise<AgendaResponse> {
   const resp = await fetch(`/api/agendas/${lessonWeekId}`, { headers: authHeaders() });
   if (!resp.ok) throw new Error("Não foi possível carregar a agenda.");
   return resp.json();
 }
 
-// NOTA: layout ainda não é pixel-perfect aos modelos originais (Infantil /
-// Fundamental) — isso é trabalho de refinamento visual (ver ARCHITECTURE.md
-// secao 7). Aqui já está a estrutura funcional: dias, conteúdo da agenda por
-// dia, edição, e o botão de PDF (que hoje devolve 501 - geração via
-// Playwright ainda não implementada).
+function groupByDate(days: AgendaDay[]): { date: string; weekday: string; rows: AgendaDay[] }[] {
+  const map = new Map<string, AgendaDay[]>();
+  for (const day of days) {
+    const list = map.get(day.date) ?? [];
+    list.push(day);
+    map.set(day.date, list);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, rows]) => ({ date, weekday: rows[0].weekday, rows: rows.sort((a, b) => a.slot - b.slot) }));
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${d.getUTCFullYear()}`;
+}
+
+// Reconstrói o modelo real de agenda semanal (Infantil / Fundamental) — grade
+// Seg-Qui em 2 colunas + Sexta/recado numa linha só, bullets por disciplina
+// (cada linha do planejamento vira um bullet aqui), editável e pronta pra
+// imprimir. Igual à Agenda enviada aos pais hoje em papel.
 export function AgendaPage() {
   const { lessonWeekId = "" } = useParams();
   const queryClient = useQueryClient();
-  const { data: agenda, isLoading } = useQuery({
+  const { data: agenda, isLoading, isError } = useQuery({
     queryKey: ["agenda", lessonWeekId],
     queryFn: () => fetchAgenda(lessonWeekId),
     enabled: Boolean(lessonWeekId),
   });
+
+  const [genBusy, setGenBusy] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageBusy, setImageBusy] = useState(false);
 
   // Mesmo heartbeat do Planejamento — alimenta a bolinha verde/cinza da
   // coordenadora quando a professora abre a Agenda pelo próprio link.
@@ -57,59 +88,153 @@ export function AgendaPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const [pdfMessage, setPdfMessage] = useState("");
+  function invalidate() {
+    void queryClient.invalidateQueries({ queryKey: ["agenda", lessonWeekId] });
+  }
 
-  async function downloadPdf() {
-    const resp = await fetch(`/api/agendas/${lessonWeekId}/pdf`, { method: "POST" });
-    if (resp.status === 501) {
-      setPdfMessage("Exportação em PDF ainda não está pronta (Fase 4 em andamento).");
-      return;
+  async function saveAgendaText(dayId: string, text: string) {
+    await api.patchLessonDay(dayId, { agendaHtml: text });
+    invalidate();
+  }
+
+  async function generate(dayId: string) {
+    setGenBusy(dayId);
+    try {
+      await api.generateAgendaWithAi(dayId);
+      invalidate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Falha ao gerar por IA.");
+    } finally {
+      setGenBusy(null);
     }
-    setPdfMessage("");
+  }
+
+  async function uploadImage(file: File) {
+    setImageBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await api.saveAgenda(lessonWeekId, { template: agenda!.template, imageUrl: dataUrl });
+      invalidate();
+    } catch {
+      alert("Falha ao enviar a imagem.");
+    } finally {
+      setImageBusy(false);
+    }
   }
 
   if (isLoading) return <p className="loading">Carregando…</p>;
-  if (!agenda) return <p>Agenda não encontrada.</p>;
+  if (isError || !agenda) return <p className="loading">Agenda não encontrada.</p>;
+
+  const groups = groupByDate(agenda.lessonWeek.days);
+  const monThu = groups.filter((g) => g.weekday !== "SEX");
+  const friday = groups.find((g) => g.weekday === "SEX");
+
+  function renderDay(group: { date: string; weekday: string; rows: AgendaDay[] }) {
+    const recess = group.rows.every((r) => r.isRecess);
+    return (
+      <section key={group.date} className="agenda-day-block">
+        <h2>
+          {group.weekday === "SEG" && "Segunda-feira"}
+          {group.weekday === "TER" && "Terça-feira"}
+          {group.weekday === "QUA" && "Quarta-feira"}
+          {group.weekday === "QUI" && "Quinta-feira"}
+          {group.weekday === "SEX" && "Sexta-feira"}
+          {" – "}
+          {fmtDate(group.date)}
+        </h2>
+        {recess ? (
+          <p className="agenda-recess">Recesso</p>
+        ) : (
+          <ul className="agenda-bullets">
+            {group.rows.map((row) => (
+              <li key={row.id}>
+                {row.unitDay && <strong>{row.unitDay}: </strong>}
+                <span
+                  className="agenda-bullet-text no-print-edit"
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="Clique em Gerar por IA ou escreva o resumo pros pais…"
+                  onBlur={(e) => void saveAgendaText(row.id, e.currentTarget.innerText.trim())}
+                >
+                  {row.agendaHtml || ""}
+                </span>
+                <button
+                  type="button"
+                  className="no-print agenda-ai-btn"
+                  disabled={genBusy === row.id}
+                  onClick={() => void generate(row.id)}
+                >
+                  {genBusy === row.id ? "Gerando…" : "Gerar por IA"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    );
+  }
 
   return (
-    <div className={`agenda agenda--${agenda.template}`}>
-      <header>
-        <h1>Agenda semanal — {agenda.lessonWeek.class.name}</h1>
-        <p>
-          Professor(a) regente: {agenda.lessonWeek.teacher.name}
-        </p>
-        <button onClick={() => void downloadPdf()}>Baixar PDF</button>
-        {pdfMessage && <p className="hint">{pdfMessage}</p>}
-      </header>
-
-      <div className="agenda-grid">
-        {agenda.lessonWeek.days.map((day) => (
-          <section key={day.date} className="agenda-day">
-            <h2>
-              {day.weekday} — {new Date(day.date).toLocaleDateString("pt-BR")}
-            </h2>
-            <div
-              className="agenda-day-content"
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={(e) => {
-                const text = e.currentTarget.innerText;
-                void api
-                  .patchLessonDay(day.id, { agendaHtml: text })
-                  .then(() => queryClient.invalidateQueries({ queryKey: ["agenda", lessonWeekId] }));
-              }}
-            >
-              {day.agendaHtml || "(sem conteúdo ainda)"}
-            </div>
-          </section>
-        ))}
+    <div className="agenda-page">
+      <div className="agenda-toolbar no-print">
+        <button type="button" onClick={() => window.print()}>Imprimir / Salvar PDF</button>
       </div>
 
-      <section className="agenda-image">
-        <h2>Recado da semana</h2>
-        {agenda.imageUrl ? <img src={agenda.imageUrl} alt="Recado" /> : <p>Nenhuma imagem enviada ainda.</p>}
-        {/* TODO: upload de arquivo de verdade precisa de um endpoint de assets (S3/minio ou disco na VM). */}
-      </section>
+      <div className={`agenda-sheet agenda-sheet--${agenda.template}`}>
+        <header className="agenda-sheet-header">
+          <img className="agenda-logo" src="/cabecalho.png" alt="Cabeçalho" />
+          <div className="agenda-title-box">
+            <div className="agenda-title-line">AGENDA SEMANAL</div>
+            {agenda.template === "fundamental" && <div className="agenda-title-line">ENSINO FUNDAMENTAL</div>}
+            <div className="agenda-title-line agenda-title-class">{agenda.lessonWeek.class.name}</div>
+          </div>
+        </header>
+        <div className="agenda-teacher-row">
+          {agenda.template === "infantil" ? "PROFESSORA " : "PROFESSOR REGENTE: "}
+          {agenda.lessonWeek.teacher.name}
+        </div>
+
+        <div className="agenda-grid-2col">{monThu.map(renderDay)}</div>
+
+        <div className="agenda-friday-row">
+          {friday ? renderDay(friday) : <div />}
+          <section className="agenda-image-box">
+            <h2>Recado</h2>
+            {agenda.imageUrl ? (
+              <img src={agenda.imageUrl} alt="Recado da semana" className="agenda-recado-img" />
+            ) : (
+              <p className="hint">Nenhuma imagem enviada ainda.</p>
+            )}
+            <button
+              type="button"
+              className="no-print"
+              disabled={imageBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {imageBusy ? "Enviando…" : agenda.imageUrl ? "Trocar imagem" : "Enviar imagem"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="no-print"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadImage(file);
+                e.target.value = "";
+              }}
+            />
+          </section>
+        </div>
+
+        <p className="agenda-footer-note">IMPORTANTE! PLANEJAMENTO SUJEITO A ALTERAÇÕES.</p>
+      </div>
     </div>
   );
 }

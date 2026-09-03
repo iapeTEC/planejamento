@@ -7,7 +7,9 @@ export const agendasRouter = Router();
 
 const agendaInput = z.object({
   template: z.enum(["infantil", "fundamental"]),
-  imageUrl: z.string().url().nullable().optional(),
+  // Aceita tanto uma URL normal quanto uma data: URL (upload direto da
+  // imagem — ainda não existe um servidor de arquivos separado).
+  imageUrl: z.string().min(1).nullable().optional(),
 });
 
 async function canAccessWeek(lessonWeekId: string, teacherId?: string): Promise<boolean> {
@@ -19,19 +21,35 @@ async function canAccessWeek(lessonWeekId: string, teacherId?: string): Promise<
   return week?.teacherId === teacherId;
 }
 
-// GET /api/agendas/:lessonWeekId
+// GET /api/agendas/:lessonWeekId — mesmo que a professora nunca tenha aberto
+// essa Agenda antes (nenhum registro salvo ainda), devolve o planejamento da
+// semana com um template padrão (conforme o nível da turma) pra tela
+// aparecer vazia e pronta pra preencher, em vez de "não encontrada".
 agendasRouter.get("/:lessonWeekId", requireTeacherOrCoordinator, async (req, res) => {
   if (!(await canAccessWeek(req.params.lessonWeekId, req.teacherId))) {
     res.status(403).json({ error: "Acesso negado a esta agenda." });
     return;
   }
-  const agenda = await prisma.agenda.findUnique({
-    where: { lessonWeekId: req.params.lessonWeekId },
-    include: {
-      lessonWeek: { include: { days: { orderBy: [{ date: "asc" }, { slot: "asc" }] }, teacher: true, class: true } },
-    },
+
+  const week = await prisma.lessonWeek.findUnique({
+    where: { id: req.params.lessonWeekId },
+    include: { days: { orderBy: [{ date: "asc" }, { slot: "asc" }] }, teacher: true, class: true },
   });
-  res.json(agenda);
+  if (!week) {
+    res.status(404).json({ error: "Planejamento não encontrado." });
+    return;
+  }
+
+  const agenda = await prisma.agenda.findUnique({ where: { lessonWeekId: req.params.lessonWeekId } });
+
+  res.json({
+    id: agenda?.id ?? null,
+    template: agenda?.template ?? week.class.level,
+    imageUrl: agenda?.imageUrl ?? null,
+    updatedBy: agenda?.updatedBy ?? null,
+    updatedAt: agenda?.updatedAt ?? null,
+    lessonWeek: week,
+  });
 });
 
 // PUT /api/agendas/:lessonWeekId — cria/edita o registro da agenda (template, imagem do recado).

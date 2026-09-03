@@ -174,6 +174,9 @@ export const api = {
       method: "POST",
     }),
 
+  saveAgenda: (lessonWeekId: string, payload: { template: "infantil" | "fundamental"; imageUrl?: string | null }) =>
+    request(`/agendas/${lessonWeekId}`, { method: "PUT", body: JSON.stringify(payload) }),
+
   listTeachers: () => request<Teacher[]>("/teachers"),
 
   heartbeat: () => request<{ ok: true }>("/teachers/heartbeat", { method: "POST" }),
