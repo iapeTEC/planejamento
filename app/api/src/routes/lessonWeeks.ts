@@ -70,16 +70,22 @@ lessonWeeksRouter.put("/", requireTeacher, async (req, res) => {
     return;
   }
 
-  const { classId, term, weekStart, coordMessage, days } = parsed.data;
+  const { classId, term, weekStart, coordMessage } = parsed.data;
   const teacherId = req.teacherId!;
 
-  const assignment = await prisma.teacherClass.findUnique({
-    where: { teacherId_classId: { teacherId, classId } },
-  });
+  const [assignment, teacher] = await Promise.all([
+    prisma.teacherClass.findUnique({ where: { teacherId_classId: { teacherId, classId } } }),
+    prisma.teacher.findUniqueOrThrow({ where: { id: teacherId }, select: { isEnglishTeacher: true } }),
+  ]);
   if (!assignment) {
     res.status(403).json({ error: "Turma não vinculada a este professor." });
     return;
   }
+
+  // Turmas de inglês têm só 1 aula por dia — nunca deixa gravar slots extras
+  // (aconteceu uma vez por engano na importação e deixou linhas vazias
+  // fantasmas na tela).
+  const days = teacher.isEnglishTeacher ? parsed.data.days.filter((day) => day.slot === 0) : parsed.data.days;
 
   const week = await prisma.$transaction(async (tx) => {
     const upserted = await tx.lessonWeek.upsert({
