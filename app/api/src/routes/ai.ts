@@ -48,9 +48,16 @@ async function callAiModel(prompt: string): Promise<string> {
 
 // POST /api/lesson-days/:id/agenda/generate — botão "Gerar por IA" da coluna Agenda.
 aiRouter.post("/lesson-days/:id/agenda/generate", requireTeacher, async (req, res) => {
-  const day = await prisma.lessonDay.findUnique({ where: { id: req.params.id } });
+  const day = await prisma.lessonDay.findUnique({
+    where: { id: req.params.id },
+    include: { lessonWeek: { select: { teacherId: true } } },
+  });
   if (!day) {
     res.status(404).json({ error: "Dia de planejamento não encontrado." });
+    return;
+  }
+  if (day.lessonWeek.teacherId !== req.teacherId) {
+    res.status(403).json({ error: "Acesso negado a este planejamento." });
     return;
   }
 

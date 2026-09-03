@@ -67,6 +67,14 @@ lessonWeeksRouter.put("/", requireTeacher, async (req, res) => {
   const { classId, term, weekStart, coordMessage, days } = parsed.data;
   const teacherId = req.teacherId!;
 
+  const assignment = await prisma.teacherClass.findUnique({
+    where: { teacherId_classId: { teacherId, classId } },
+  });
+  if (!assignment) {
+    res.status(403).json({ error: "Turma não vinculada a este professor." });
+    return;
+  }
+
   const week = await prisma.$transaction(async (tx) => {
     const upserted = await tx.lessonWeek.upsert({
       where: {
@@ -105,6 +113,19 @@ lessonWeeksRouter.patch("/days/:id", requireTeacherOrCoordinator, async (req, re
   const parsed = dayInput.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const current = await prisma.lessonDay.findUnique({
+    where: { id: req.params.id },
+    include: { lessonWeek: { select: { teacherId: true } } },
+  });
+  if (!current) {
+    res.status(404).json({ error: "Dia de planejamento não encontrado." });
+    return;
+  }
+  if (req.teacherId && current.lessonWeek.teacherId !== req.teacherId) {
+    res.status(403).json({ error: "Acesso negado a este planejamento." });
     return;
   }
 

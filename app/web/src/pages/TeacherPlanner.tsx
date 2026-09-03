@@ -1,24 +1,27 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { RichTextEditor } from "../components/RichTextEditor";
 import { api, getTeacherToken, type LessonDay } from "../lib/api";
 import { loadDraft, useAutosave, type WeekDraft } from "../lib/useAutosave";
 import { addDays, mondayOf, toISODate, weekLabel, WEEKDAYS } from "../lib/week";
 
-function emptyDays(weekStart: Date): LessonDay[] {
-  return WEEKDAYS.map((w, i) => ({
-    weekday: w.label,
-    date: toISODate(addDays(weekStart, i)),
-    slot: 0,
-  }));
+function emptyDays(weekStart: Date, slotsPerDay: number): LessonDay[] {
+  return WEEKDAYS.flatMap((w, i) =>
+    Array.from({ length: slotsPerDay }, (_, slot) => ({
+      weekday: w.label,
+      date: toISODate(addDays(weekStart, i)),
+      slot,
+    })),
+  );
 }
 
-function mergeDays(base: LessonDay[], weekStart: Date): LessonDay[] {
-  return WEEKDAYS.map((w, i) => {
-    const date = toISODate(addDays(weekStart, i));
-    const found = base.find((d) => d.date === date);
-    return found ?? { weekday: w.label, date, slot: 0 };
-  });
+function mergeDays(base: LessonDay[], weekStart: Date, slotsPerDay: number): LessonDay[] {
+  const result = base.map((day) => ({ ...day, date: day.date.slice(0, 10) }));
+  for (const expected of emptyDays(weekStart, slotsPerDay)) {
+    if (!result.some((day) => day.date === expected.date && day.slot === expected.slot)) result.push(expected);
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date) || a.slot - b.slot);
 }
 
 function dateNumber(isoDate: string): number {
@@ -77,6 +80,7 @@ export function TeacherPlanner() {
   }, [classId, weekStart, queryClient]);
 
   const draft: WeekDraft = useMemo(() => {
+    const slotsPerDay = teacher?.isEnglishTeacher ? 1 : 6;
     const fromDraft = classId ? loadDraft(classId, weekStartIso) : null;
     if (fromDraft) return fromDraft;
     return {
@@ -84,9 +88,11 @@ export function TeacherPlanner() {
       term: weekQuery.data?.term ?? "1",
       weekStart: weekStartIso,
       coordMessage: weekQuery.data?.coordMessage ?? "",
-      days: weekQuery.data ? mergeDays(weekQuery.data.days, weekStart) : emptyDays(weekStart),
+      days: weekQuery.data
+        ? mergeDays(weekQuery.data.days, weekStart, slotsPerDay)
+        : emptyDays(weekStart, slotsPerDay),
     };
-  }, [classId, weekStartIso, weekQuery.data, weekStart]);
+  }, [classId, weekStartIso, weekQuery.data, weekStart, teacher?.isEnglishTeacher]);
 
   const [local, setLocal] = useState<WeekDraft>(draft);
   useEffect(() => setLocal(draft), [draft]);
@@ -111,8 +117,15 @@ export function TeacherPlanner() {
   const selectedClass = teacher.classes.find(({ class: c }) => c.id === classId)?.class;
   const selectedClassIndex = teacher.classes.findIndex(({ class: c }) => c.id === classId);
   const modeClass = teacher.isEnglishTeacher ? "english-teacher" : "non-english";
+  const generalDays = WEEKDAYS.map((weekday, index) => {
+    const date = toISODate(addDays(weekStart, index));
+    const rows = local.days
+      .map((day, dayIndex) => ({ day, dayIndex }))
+      .filter(({ day }) => day.date === date);
+    return { date, weekday: weekday.label, rows };
+  });
 
-  function updateDay(index: number, field: keyof LessonDay, value: string) {
+  function updateDay(index: number, field: keyof LessonDay, value: string | boolean) {
     setLocal((prev) => {
       const days = prev.days.slice();
       days[index] = { ...days[index], [field]: value };
@@ -150,10 +163,10 @@ export function TeacherPlanner() {
     if (key === "desenvolvimento" && currentTeacher.isEnglishTeacher) {
       return (
         <div className={className}>
-          <textarea
+          <RichTextEditor
             className="rich"
             value={day.desenvolvimento ?? ""}
-            onChange={(e) => updateDay(index, "desenvolvimento", e.target.value)}
+            onChange={(value) => updateDay(index, "desenvolvimento", value)}
             onBlur={() => void flush()}
             aria-label="Desenvolvimento da aula"
           />
@@ -162,9 +175,9 @@ export function TeacherPlanner() {
             {(["pppPresentation", "pppPractice", "pppProduction"] as const).map((keyName) => (
               <label key={keyName}>
                 {keyName === "pppPresentation" ? "Presentation" : keyName === "pppPractice" ? "Practice" : "Production"}
-                <textarea
+                <RichTextEditor
                   value={day[keyName] ?? ""}
-                  onChange={(e) => updateDay(index, keyName, e.target.value)}
+                  onChange={(value) => updateDay(index, keyName, value)}
                   onBlur={() => void flush()}
                 />
               </label>
@@ -175,9 +188,9 @@ export function TeacherPlanner() {
             {(["skillListening", "skillWriting", "skillReading", "skillSpeaking"] as const).map((keyName) => (
               <label key={keyName}>
                 {keyName.replace("skill", "")}
-                <textarea
+                <RichTextEditor
                   value={day[keyName] ?? ""}
-                  onChange={(e) => updateDay(index, keyName, e.target.value)}
+                  onChange={(value) => updateDay(index, keyName, value)}
                   onBlur={() => void flush()}
                 />
               </label>
@@ -188,10 +201,10 @@ export function TeacherPlanner() {
     }
 
     return (
-      <textarea
+      <RichTextEditor
         className="rich"
         value={(day[key] as string) ?? ""}
-        onChange={(e) => updateDay(index, key, e.target.value)}
+        onChange={(value) => updateDay(index, key, value)}
         onBlur={() => void flush()}
         aria-label={String(key)}
       />
@@ -202,10 +215,10 @@ export function TeacherPlanner() {
     return (
       <div className="agenda-cell-content">
         <button type="button" onClick={() => void generateAgendaWithAi(index)}>Gerar por IA</button>
-        <textarea
+        <RichTextEditor
           className="rich"
           value={day.agendaHtml ?? ""}
-          onChange={(e) => updateDay(index, "agendaHtml", e.target.value)}
+          onChange={(value) => updateDay(index, "agendaHtml", value)}
           onBlur={() => void flush()}
           placeholder="Texto da agenda para os pais…"
           aria-label="Agenda"
@@ -288,11 +301,17 @@ export function TeacherPlanner() {
                   <thead><tr>{ENGLISH_FIELDS.map((field) => <th key={field.key}>{field.label}</th>)}<th>Agenda</th></tr></thead>
                   <tbody>
                     {local.days.map((day, index) => (
-                      <tr key={day.date}>
+                      <tr key={`${day.date}-${day.slot}`}>
                         {ENGLISH_FIELDS.map((field, fieldIndex) => (
                           <td key={field.key} className={fieldIndex === 0 ? "td-unit" : field.className}>
                             {fieldIndex === 0 && (
-                              <div className="day-badge" aria-hidden="true"><span className="dayNum">{dateNumber(day.date)}</span><span className="weekPill">{day.weekday}</span></div>
+                              <>
+                                <div className="day-badge" aria-hidden="true"><span className="dayNum">{dateNumber(day.date)}</span><span className="weekPill">{day.weekday}</span></div>
+                                <label className="recess-toggle">
+                                  <input type="checkbox" checked={day.isRecess ?? false} onChange={(event) => updateDay(index, "isRecess", event.target.checked)} />
+                                  Recesso
+                                </label>
+                              </>
                             )}
                             {fieldEditor(day, index, field.key, field.className)}
                           </td>
@@ -304,22 +323,35 @@ export function TeacherPlanner() {
                 </table>
               ) : (
                 <div className="general-week">
-                  {local.days.map((day, index) => (
-                    <section className="general-day-block" key={day.date}>
+                  {generalDays.map((group) => (
+                    <section className="general-day-block" key={group.date}>
                       <div className="general-day-marker">
-                        <div className="day-badge" aria-hidden="true"><span className="dayNum">{dateNumber(day.date)}</span><span className="weekPill">{day.weekday}</span></div>
+                        <div className="day-badge" aria-hidden="true"><span className="dayNum">{dateNumber(group.date)}</span><span className="weekPill">{group.weekday}</span></div>
                       </div>
                       <div className="general-day-rows">
                         <div className="general-header">
                           {GENERAL_FIELDS.map((field) => <div className="general-th" key={field.key}>{field.label}</div>)}
                           <div className="general-th">Agenda</div>
                         </div>
-                        <div className="general-row">
-                          {GENERAL_FIELDS.map((field) => (
-                            <div className="general-td" data-label={field.label} key={field.key}>{fieldEditor(day, index, field.key)}</div>
-                          ))}
-                          <div className="general-td agenda-cell" data-label="Agenda">{agendaEditor(day, index)}</div>
-                        </div>
+                        {group.rows.map(({ day, dayIndex }) => (
+                          <div className="general-row" key={`${day.date}-${day.slot}`}>
+                            {GENERAL_FIELDS.map((field) => (
+                              <div className="general-td" data-label={field.label} key={field.key}>
+                                {field.key === "unitDay" && (
+                                  <div className="lesson-slot-meta">
+                                    <strong>Aula {day.slot + 1}</strong>
+                                    <label className="recess-toggle">
+                                      <input type="checkbox" checked={day.isRecess ?? false} onChange={(event) => updateDay(dayIndex, "isRecess", event.target.checked)} />
+                                      Recesso
+                                    </label>
+                                  </div>
+                                )}
+                                {fieldEditor(day, dayIndex, field.key)}
+                              </div>
+                            ))}
+                            <div className="general-td agenda-cell" data-label="Agenda">{agendaEditor(day, dayIndex)}</div>
+                          </div>
+                        ))}
                       </div>
                     </section>
                   ))}
@@ -332,7 +364,7 @@ export function TeacherPlanner() {
         <section className="coord">
           <div className="coord-label">{teacher.isEnglishTeacher ? "COORDINATION MESSAGE:" : "MENSAGEM DA COORDENAÇÃO:"}</div>
           <div className="coord-box">
-            <textarea className="coord-edit rich" value={local.coordMessage} onChange={(e) => updateCoordMessage(e.target.value)} onBlur={() => void flush()} aria-label="Mensagem da coordenação" />
+            <RichTextEditor className="coord-edit rich" value={local.coordMessage} onChange={updateCoordMessage} onBlur={() => void flush()} />
           </div>
         </section>
       </div>

@@ -34,6 +34,7 @@ model Coordinator {
 
 model Teacher {
   id               String   @id @default(uuid())
+  legacyId         String?  @unique
   name             String
   phone            String?
   photoUrl         String?
@@ -67,21 +68,25 @@ model TeacherClass {
 }
 
 model LessonWeek {
-  id         String   @id @default(uuid())
-  teacherId  String
-  classId    String
-  term       String
-  weekStart  DateTime @db.Date
-  coordMessage String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String    @id @default(uuid())
+  teacherId       String
+  classId         String
+  legacyKey       String?
+  legacyUpdatedAt DateTime?
+  legacyUpdatedBy String?
+  term            String
+  weekStart       DateTime  @db.Date
+  coordMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher Teacher     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
   days    LessonDay[]
   agenda  Agenda?
 
   @@unique([teacherId, classId, weekStart])
+  @@unique([teacherId, legacyKey])
   @@index([weekStart])
 }
 
@@ -110,7 +115,7 @@ model LessonDay {
   skillSpeaking   String?
 
   // Agenda (para os pais)
-  agendaHtml         String?
+  agendaHtml          String?
   agendaGeneratedByAi Boolean @default(false)
 
   observations Json?
@@ -125,6 +130,7 @@ model LessonDay {
 
 model CalendarEvent {
   id            String   @id @default(uuid())
+  legacyId      String?  @unique
   date          DateTime @db.Date
   title         String
   html          String?
