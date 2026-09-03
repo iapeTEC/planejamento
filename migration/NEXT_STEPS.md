@@ -1,5 +1,46 @@
 # Planejamento IAPE → SaaS escolar — Plano completo e estado atual
 
+## Status em 2026-09-03: migrado da VPS temporária pra VM da escola (definitivo)
+
+`planejamento.iape.tech` agora roda de verdade na VM `iape` (`srv-school`),
+não mais na VPS `siyum`. Migração feita com a Norma na rede da escola
+(acesso direto à VM), zero perda de dados (dump/restore completo, conferido
+por contagem de linhas e por `max(updatedAt)` antes de cortar o tráfego).
+
+**Como ficou** (mesmo padrão de projeto/onevoice27/homework):
+- App roda em `app/deploy-vm/docker-compose.yml` na VM, porta
+  `127.0.0.1:3300`, rede Docker própria (`planejamento_internal`), Postgres
+  não publicado externamente.
+- Serviço `planejamento-http-tunnel.service` (systemd, na VM) mantém um túnel
+  reverso `127.0.0.1:22043` (VM) → mesma porta na VPS.
+- Container `planejamento-relay` na VPS (`socat`, `network_mode: host`)
+  repassa `172.19.0.1:23043` → `127.0.0.1:22043`.
+- Caddy na VPS (`/home/siyum/app/Caddyfile`) faz `reverse_proxy` de
+  `planejamento.iape.tech` pra `172.19.0.1:23043`.
+
+**Pegadinha que travou a migração por um tempo**: o Caddy não conseguia
+alcançar o relay novo, mesmo com tudo idêntico ao padrão que já funciona pros
+outros apps — causa era o `ufw` da VPS, que tem uma regra específica por
+porta liberando tráfego de `172.19.0.0/16` (rede do Docker) pra cada relay
+(`23040`, `23041`, `23042`); a porta nova (`23043`) não tinha essa regra e
+caía no DROP padrão. Resolvido com (rodar como `siyum` na VPS, senha de sudo
+com a Norma/Bruno):
+
+```
+sudo ufw allow from 172.19.0.0/16 to any port 23043 proto tcp comment "planejamento-relay: caddy -> tunel VM escola"
+```
+
+Se algum dia precisar adicionar outro relay novo (outra porta), não esquecer
+desse passo — é fácil de esquecer porque tudo mais (Docker, systemd, Caddy)
+funciona sem ele, só o firewall bloqueia silenciosamente (timeout, não
+"connection refused").
+
+**Backup temporário deixado na VPS**: os containers antigos
+`planejamento-api-1` e `planejamento-web-1` foram parados (não apagados).
+`planejamento-db-1` (o Postgres antigo, com os dados até o momento do corte)
+continua **rodando** de propósito, como rede de segurança — apagar só depois
+de confirmar que a VM está estável por um tempo.
+
 ## Status em 2026-09-02 (fim do dia): Fase 3 e 4 prontas, nada em produção tocado
 
 Combinado com a Norma: **nenhum corte de produção acontece antes do fim de
