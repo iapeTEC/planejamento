@@ -57,6 +57,13 @@ function groupByDate(days: AgendaDay[]): { date: string; weekday: string; rows: 
     .map(([date, rows]) => ({ date, weekday: rows[0].weekday, rows: rows.sort((a, b) => a.slot - b.slot) }));
 }
 
+function stripHtml(html: string | null | undefined): string {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return (div.textContent ?? "").trim();
+}
+
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${d.getUTCFullYear()}`;
@@ -153,7 +160,7 @@ export function AgendaPage() {
           <ul className="agenda-bullets">
             {group.rows.map((row) => (
               <li key={row.id}>
-                {row.unitDay && <strong>{row.unitDay}: </strong>}
+                {stripHtml(row.unitDay) && <strong>{stripHtml(row.unitDay)}: </strong>}
                 <span
                   className="agenda-bullet-text no-print-edit"
                   contentEditable
