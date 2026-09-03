@@ -46,6 +46,10 @@ async function runCodex(prompt) {
           else resolve();
         },
       );
+      // Sem isto, o stdin do processo filho fica como pipe aberto (nunca
+      // fechado), e o codex trava esperando EOF em "Reading additional
+      // input from stdin..." até nosso próprio TIMEOUT_MS matá-lo.
+      child.stdin?.end();
       child.on("error", reject);
     });
     const text = (await readFile(outFile, "utf8")).trim();
