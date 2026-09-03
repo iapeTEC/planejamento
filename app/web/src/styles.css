@@ -102,3 +102,636 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f2f2f2
 .hint { color: #666; font-size: 13px; }
 
 h1 { color: var(--navy); }
+
+/* Teacher planner: visual parity with the original Planejamento/Bilingue pages. */
+.teacher-page {
+  width: min(980px, calc(100% - 32px));
+  max-width: 980px;
+  margin: 18px auto;
+  padding: 0;
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.teacher-page .hero {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  background: transparent;
+}
+
+.teacher-page .hero-bg,
+.teacher-page .hero-img {
+  width: 100%;
+}
+
+.teacher-page .hero-img {
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.teacher-page .hero-content {
+  display: flex;
+  padding: 10px 16px 6px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+
+.teacher-page .hero-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.teacher-page .pill {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teacher-page .pill-static { cursor: default; }
+
+.teacher-page .pill-primary {
+  background: #f6f6f6;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  color: #111;
+  font-weight: 900;
+}
+
+.teacher-page .meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.teacher-page .meta-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.teacher-page .meta-label {
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.teacher-page .meta-value {
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: #f7f7f7;
+  color: #111;
+  font-weight: 700;
+}
+
+.teacher-page .top-actions {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+
+.teacher-page .week-nav,
+.teacher-page .actions-right,
+.teacher-page .class-nav {
+  display: flex;
+  align-items: center;
+}
+
+.teacher-page .week-nav { gap: 10px; }
+.teacher-page .actions-right { gap: 10px; }
+.teacher-page .class-nav { gap: 8px; }
+
+.teacher-page .pill-week {
+  background: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  box-shadow: none;
+}
+
+.teacher-page .tick {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+.teacher-page .nav-btn {
+  width: 52px;
+  height: 44px;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  background: #f4f4f4;
+  color: #111;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.teacher-page .nav-btn:active { transform: scale(0.96); }
+
+.teacher-page .btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teacher-page .btn-primary { background: var(--purple-1); color: #fff; }
+.teacher-page .btn-ghost { background: #f5f5f5; color: #111; }
+
+.teacher-page .agenda-link {
+  color: #fff;
+  text-decoration: none;
+}
+
+.teacher-page .save-feedback {
+  max-width: 190px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.teacher-page .save-feedback--saved { color: #157a3d; }
+.teacher-page .save-feedback--error { color: #b00020; font-weight: 700; }
+
+.teacher-page .title-row {
+  padding: 0 16px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.teacher-page .lesson-title {
+  color: var(--purple-1);
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+.teacher-page .class-nav .nav-btn {
+  width: 40px;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 28px;
+}
+
+.teacher-page .class-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.teacher-page .sheet-wrap { padding: 0 14px 14px 110px; }
+.teacher-page .sheet { position: relative; }
+
+.teacher-page .sheet-inner {
+  position: relative;
+  border-radius: 18px;
+  overflow: visible;
+  background: #fff;
+}
+
+.english-teacher .teacher-page .sheet-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  border: 2px solid var(--grid);
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+.teacher-page .lp-table {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  table-layout: fixed;
+  overflow: visible;
+}
+
+.teacher-page .col-unit { width: 10%; }
+.teacher-page .col-content { width: 22%; }
+.teacher-page .col-dev { width: 26%; }
+.teacher-page .col-mat { width: 22%; }
+.teacher-page .col-agenda { width: 20%; }
+
+.teacher-page .lp-table th {
+  padding: 8px 10px;
+  border: 0;
+  border-right: 2px solid var(--grid);
+  border-bottom: 2px solid var(--grid);
+  background: var(--orange);
+  background-clip: padding-box;
+  color: #111;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.teacher-page .lp-table thead th:first-child { border-top-left-radius: 16px; }
+.teacher-page .lp-table thead th:last-child { border-top-right-radius: 16px; border-right: 0; }
+
+.teacher-page .lp-table td {
+  padding: 0;
+  border: 0;
+  border-right: 2px solid var(--grid);
+  border-bottom: 2px solid var(--grid);
+  vertical-align: top;
+  background: #fff;
+}
+
+.teacher-page .lp-table td:last-child { border-right: 0; }
+.teacher-page .lp-table tbody tr:last-child td { border-bottom: 0; }
+
+.teacher-page .td-unit { position: relative; z-index: 10; }
+
+.teacher-page .day-badge {
+  position: absolute;
+  left: -92px;
+  top: 0;
+  z-index: 100;
+  width: 86px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  background: transparent;
+}
+
+.english-teacher .teacher-page .day-badge { height: 80px; }
+
+.teacher-page .dayNum {
+  width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  font-size: 36px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.teacher-page .weekPill {
+  width: 38px;
+  padding: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--navy);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  user-select: none;
+}
+
+.teacher-page textarea.rich,
+.teacher-page .ppp-block textarea,
+.teacher-page .skills-block textarea {
+  width: 100%;
+  min-height: 78px;
+  margin: 0;
+  padding: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #111;
+  font: 14px/1.3 Arial, Helvetica, sans-serif;
+  resize: vertical;
+  display: block;
+}
+
+.teacher-page textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 3px rgba(90, 43, 134, 0.18);
+}
+
+.teacher-page .dev-english-cell { min-width: 0; }
+
+.teacher-page .ppp-block,
+.teacher-page .skills-block {
+  margin: 0 8px 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #d8dce3;
+}
+
+.teacher-page .ppp-block > strong,
+.teacher-page .skills-block > strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--purple-1);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.teacher-page .ppp-block label,
+.teacher-page .skills-block label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--purple-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.teacher-page .ppp-block textarea,
+.teacher-page .skills-block textarea {
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 6px;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.teacher-page .agenda-cell-content { padding: 8px; }
+
+.teacher-page .agenda-cell-content button {
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--purple-1);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.teacher-page .agenda-cell-content textarea.rich {
+  min-height: 58px;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.teacher-page .coord { padding: 10px 14px 18px; }
+
+.teacher-page .coord-label {
+  margin-bottom: 6px;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.teacher-page .coord-box {
+  padding: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.teacher-page textarea.coord-edit {
+  min-height: 70px;
+  padding: 8px;
+  border-radius: 12px;
+  resize: vertical;
+}
+
+/* General teachers use the wider, day-by-day layout from Planejamento. */
+.non-english .teacher-page {
+  width: calc(100% - 32px);
+  max-width: 1880px;
+}
+
+.non-english .teacher-page .hero-content,
+.non-english .teacher-page .top-actions,
+.non-english .teacher-page .title-row { flex-wrap: wrap; }
+
+.non-english .teacher-page .sheet-wrap {
+  padding: 0 14px 14px 104px;
+  overflow-x: clip;
+}
+
+.non-english .teacher-page .general-week {
+  --general-cols: 20% 17.5% 22% 17.5% 13% 10%;
+  width: 100%;
+  max-width: 100%;
+  display: grid;
+  gap: 16px;
+}
+
+.non-english .teacher-page .general-day-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.non-english .teacher-page .general-day-marker {
+  position: relative;
+  min-width: 0;
+}
+
+.non-english .teacher-page .general-day-marker .day-badge {
+  left: -92px;
+  top: 0;
+  bottom: 0;
+  height: 100%;
+}
+
+.non-english .teacher-page .general-day-rows {
+  min-width: 0;
+  border: 2px solid var(--grid);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.non-english .teacher-page .general-header,
+.non-english .teacher-page .general-row {
+  display: grid;
+  grid-template-columns: var(--general-cols);
+}
+
+.non-english .teacher-page .general-header {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  overflow: hidden;
+}
+
+.non-english .teacher-page .general-th {
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 2px solid var(--grid);
+  border-bottom: 2px solid var(--grid);
+  background: var(--orange);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.non-english .teacher-page .general-th:last-child { border-right: 0; }
+
+.non-english .teacher-page .general-td {
+  min-width: 0;
+  border-right: 2px solid var(--grid);
+  vertical-align: top;
+  background: #fff;
+}
+
+.non-english .teacher-page .general-td:last-child { border-right: 0; }
+
+.non-english .teacher-page .general-td textarea.rich {
+  min-height: 78px;
+  overflow-wrap: break-word;
+}
+
+.non-english .teacher-page .general-td.agenda-cell textarea.rich { min-height: 46px; }
+
+@media (max-width: 1024px) {
+  .non-english .teacher-page {
+    width: calc(100% - 20px);
+    margin: 10px auto;
+  }
+
+  .non-english .teacher-page .top-actions { align-items: flex-start; }
+  .non-english .teacher-page .actions-right { flex-wrap: wrap; justify-content: flex-end; }
+}
+
+@media (max-width: 768px) {
+  .non-english .teacher-page {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .non-english .teacher-page .sheet-wrap { padding-right: 10px; padding-left: 96px; }
+}
+
+@media (max-width: 640px) {
+  .non-english .teacher-page .sheet-wrap {
+    padding: 0 12px 14px;
+    overflow-x: hidden;
+  }
+
+  .non-english .teacher-page .general-header { display: none; }
+  .non-english .teacher-page .general-day-block { display: block; }
+
+  .non-english .teacher-page .general-day-marker {
+    min-height: 64px;
+    border-bottom: 2px solid var(--grid);
+    background: #fff;
+  }
+
+  .non-english .teacher-page .general-day-marker .day-badge {
+    position: relative;
+    left: 0;
+    width: 100%;
+    height: 64px;
+    padding: 8px 10px;
+  }
+
+  .non-english .teacher-page .general-day-marker .dayNum { width: 62px; font-size: 34px; }
+  .non-english .teacher-page .general-day-marker .weekPill { height: 48px; }
+
+  .non-english .teacher-page .general-row {
+    display: block;
+    padding: 8px;
+    background: #fff;
+  }
+
+  .non-english .teacher-page .general-td {
+    display: grid;
+    grid-template-columns: minmax(108px, 34%) minmax(0, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(26, 35, 71, 0.22);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .non-english .teacher-page .general-td:last-child {
+    margin-bottom: 0;
+    border-right: 1px solid rgba(26, 35, 71, 0.22);
+  }
+
+  .non-english .teacher-page .general-td::before {
+    content: attr(data-label);
+    padding: 10px 8px;
+    border-right: 1px solid rgba(26, 35, 71, 0.18);
+    background: #f6f6f6;
+    color: var(--navy);
+    font-size: 12px;
+    font-weight: 900;
+    overflow-wrap: break-word;
+  }
+
+  .non-english .teacher-page .general-td textarea.rich { min-height: 46px; padding: 9px 8px; }
+}
+
+@media (max-width: 560px) {
+  .teacher-page {
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .teacher-page .hero-center { align-items: center; }
+  .teacher-page .top-actions { align-items: flex-start; flex-wrap: wrap; }
+  .teacher-page .week-nav { width: 100%; justify-content: space-between; }
+  .teacher-page .actions-right { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .teacher-page .save-feedback { flex: 1 0 100%; max-width: none; text-align: right; }
+  .teacher-page .btn { padding: 10px; font-size: 12px; }
+  .teacher-page .pill-week { padding: 8px 10px; font-size: 12px; }
+  .teacher-page .lesson-title { font-size: 34px; }
+
+  .english-teacher .teacher-page .sheet-wrap {
+    padding: 0 14px 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .english-teacher .teacher-page .sheet { min-width: 900px; margin-left: 78px; }
+  .english-teacher .teacher-page .day-badge { left: -78px; width: 74px; opacity: 0.95; }
+}
+
+@media (max-width: 420px) {
+  .non-english .teacher-page .top-actions,
+  .non-english .teacher-page .hero-content { padding-left: 12px; padding-right: 12px; }
+
+  .non-english .teacher-page .week-nav,
+  .non-english .teacher-page .actions-right { width: 100%; }
+
+  .non-english .teacher-page .actions-right .btn { flex: 1; text-align: center; }
+  .non-english .teacher-page .general-td { grid-template-columns: 1fr; }
+
+  .non-english .teacher-page .general-td::before {
+    border-right: 0;
+    border-bottom: 1px solid rgba(26, 35, 71, 0.18);
+  }
+}

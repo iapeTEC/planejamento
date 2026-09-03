@@ -40,5 +40,8 @@ export function weekLabel(weekStart: Date): string {
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
   ];
   const fri = addDays(weekStart, 4);
+  if (weekStart.getMonth() !== fri.getMonth() || weekStart.getFullYear() !== fri.getFullYear()) {
+    return `${weekStart.getDate()} de ${months[weekStart.getMonth()]} a ${fri.getDate()} de ${months[fri.getMonth()]}`;
+  }
   return `${weekStart.getDate()} a ${fri.getDate()} de ${months[weekStart.getMonth()]}`;
 }
