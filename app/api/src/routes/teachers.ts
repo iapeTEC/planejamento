@@ -84,3 +84,15 @@ teachersRouter.get("/me", requireTeacher, async (req, res) => {
   });
   res.json(teacher);
 });
+
+// POST /api/teachers/heartbeat — a tela da professora chama isso periodicamente
+// enquanto está aberta. Alimenta a bolinha verde/cinza (online/offline) no
+// dashboard da coordenadora, pra ela evitar editar em cima de quem está com a
+// página aberta naquele momento.
+teachersRouter.post("/heartbeat", requireTeacher, async (req, res) => {
+  await prisma.teacher.update({
+    where: { id: req.teacherId },
+    data: { lastSeenAt: new Date() },
+  });
+  res.json({ ok: true });
+});

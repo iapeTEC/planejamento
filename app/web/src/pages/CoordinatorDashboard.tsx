@@ -13,6 +13,13 @@ function magicLink(token: string): string {
   return `${window.location.origin}/planejamento?t=${token}`;
 }
 
+const ONLINE_THRESHOLD_MS = 45_000; // heartbeat da professora é a cada 20s
+
+function isOnline(lastSeenAt: string | null): boolean {
+  if (!lastSeenAt) return false;
+  return Date.now() - new Date(lastSeenAt).getTime() < ONLINE_THRESHOLD_MS;
+}
+
 function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -53,8 +60,17 @@ function TeacherRow({ teacher, onChanged }: { teacher: Teacher; onChanged: () =>
     onChanged();
   }
 
+  const online = isOnline(teacher.lastSeenAt);
+
   return (
     <tr className={teacher.active ? "" : "inactive"}>
+      <td>
+        <span
+          className={`presence-dot ${online ? "presence-dot--online" : "presence-dot--offline"}`}
+          title={online ? "Com a página aberta agora" : "Sem a página aberta no momento"}
+          aria-label={online ? "Online" : "Offline"}
+        />
+      </td>
       <td>
         {editing ? (
           <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -164,6 +180,9 @@ export function CoordinatorDashboard() {
     queryKey: ["teachers"],
     queryFn: api.listTeachers,
     enabled: authed,
+    // Atualiza sozinho pra bolinha de presença refletir quem está com a
+    // página aberta agora, sem a coordenadora precisar recarregar.
+    refetchInterval: 20_000,
   });
 
   function onChanged() {
@@ -200,6 +219,7 @@ export function CoordinatorDashboard() {
           <table className="teachers-table">
             <thead>
               <tr>
+                <th title="Verde: com a página aberta agora. Cinza: sem a página aberta.">●</th>
                 <th>Nome</th>
                 <th>Turmas</th>
                 <th>Contato</th>

@@ -62,6 +62,16 @@ export function TeacherPlanner() {
     }
   }, [teacher, classId]);
 
+  // Avisa que a professora está com a página aberta agora — alimenta a
+  // bolinha verde/cinza (online/offline) no dashboard da coordenadora, pra
+  // ela evitar editar em cima de quem está mexendo naquele momento.
+  useEffect(() => {
+    if (!getTeacherToken()) return;
+    void api.heartbeat();
+    const interval = setInterval(() => void api.heartbeat(), 20_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const weekQuery = useQuery({
     queryKey: ["lesson-week", classId, weekStartIso],
     queryFn: () => api.lessonWeek(classId, weekStartIso),

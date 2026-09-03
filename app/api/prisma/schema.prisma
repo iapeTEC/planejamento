@@ -41,6 +41,7 @@ model Teacher {
   isEnglishTeacher Boolean  @default(false)
   active           Boolean  @default(true)
   magicToken       String   @unique @default(uuid())
+  lastSeenAt       DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

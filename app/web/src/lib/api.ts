@@ -54,6 +54,7 @@ export interface Teacher {
   isEnglishTeacher: boolean;
   active: boolean;
   magicToken: string;
+  lastSeenAt: string | null;
   classes: { class: ClassRef }[];
 }
 
@@ -111,6 +112,8 @@ export const api = {
     }),
 
   listTeachers: () => request<Teacher[]>("/teachers"),
+
+  heartbeat: () => request<{ ok: true }>("/teachers/heartbeat", { method: "POST" }),
 
   listClasses: () => request<ClassRef[]>("/classes"),
 

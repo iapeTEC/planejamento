@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, getTeacherToken } from "../lib/api";
 
 interface AgendaResponse {
   id: string;
@@ -43,6 +43,15 @@ export function AgendaPage() {
     queryFn: () => fetchAgenda(lessonWeekId),
     enabled: Boolean(lessonWeekId),
   });
+
+  // Mesmo heartbeat do Planejamento — alimenta a bolinha verde/cinza da
+  // coordenadora quando a professora abre a Agenda pelo próprio link.
+  useEffect(() => {
+    if (!getTeacherToken()) return;
+    void api.heartbeat();
+    const interval = setInterval(() => void api.heartbeat(), 20_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [pdfMessage, setPdfMessage] = useState("");
 
