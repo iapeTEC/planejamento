@@ -807,3 +807,33 @@ h1 { color: var(--navy); }
   .supervisor-page { max-width: none; padding: 0; }
   .supervisor-content-wrap { border: none; }
 }
+
+.supervisor-cell { white-space: pre-line; }
+
+.supervisor-highlight {
+  background: #fff176; padding: 0 1px; border-radius: 2px;
+  cursor: help; box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+.annotation-popover {
+  position: absolute; z-index: 200; background: #fff; border: 2px solid var(--purple-1);
+  border-radius: 10px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  width: 260px;
+}
+.annotation-popover textarea { width: 100%; min-height: 60px; font: inherit; border: 1px solid #d8dce3; border-radius: 6px; padding: 6px; }
+.annotation-popover-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+.annotation-popover-actions button {
+  background: var(--purple-1); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+.annotation-popover-actions button:last-child { background: #eee; color: #333; }
+
+.supervisor-annotation-list { margin-top: 20px; border-top: 2px solid var(--navy); padding-top: 10px; }
+.supervisor-annotation-list h2 { font-size: 16px; color: var(--navy); }
+.supervisor-annotation-list ol { padding-left: 20px; }
+.supervisor-annotation-list li { margin-bottom: 8px; font-size: 14px; }
+.annotation-remove { border: none; background: none; color: #b00020; cursor: pointer; text-decoration: underline; font-size: 12px; }
+
+@media print {
+  .annotation-popover { display: none !important; }
+  .supervisor-highlight { background: #fff176 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

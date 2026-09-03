@@ -4,12 +4,32 @@ import { useParams } from "react-router-dom";
 import { api, type LessonDay } from "../lib/api";
 import { WEEKDAYS } from "../lib/week";
 
-const FIELDS: { key: keyof LessonDay; label: string }[] = [
+interface Annotation {
+  id: string;
+  quote: string;
+  note: string;
+}
+
+const BASE_FIELDS: { key: keyof LessonDay; label: string }[] = [
   { key: "unitDay", label: "Disciplina / Unidade" },
   { key: "conteudo", label: "Conteúdo" },
   { key: "desenvolvimento", label: "Desenvolvimento da aula" },
   { key: "materiais", label: "Materiais" },
   { key: "tarefas", label: "Tarefas" },
+];
+
+// Turmas de inglês não usam o campo "desenvolvimento" pra digitar — o
+// conteúdo real da aula fica espalhado no PPP e nas competências. A versão
+// do Supervisor precisa juntar tudo isso na coluna "Desenvolvimento da
+// aula", senão fica em branco justamente o que ele mais precisa ver.
+const ENGLISH_DEV_FIELDS: { key: keyof LessonDay; label: string }[] = [
+  { key: "pppPresentation", label: "Presentation" },
+  { key: "pppPractice", label: "Practice" },
+  { key: "pppProduction", label: "Production" },
+  { key: "skillListening", label: "Listening" },
+  { key: "skillWriting", label: "Writing" },
+  { key: "skillReading", label: "Reading" },
+  { key: "skillSpeaking", label: "Speaking" },
 ];
 
 function stripHtml(html: string | undefined | null): string {
@@ -19,9 +39,24 @@ function stripHtml(html: string | undefined | null): string {
   return div.textContent ?? "";
 }
 
+function developmentContent(day: LessonDay, isEnglishTeacher: boolean): string {
+  if (!isEnglishTeacher) return stripHtml(day.desenvolvimento);
+  return ENGLISH_DEV_FIELDS.map((f) => {
+    const value = stripHtml(day[f.key] as string | undefined);
+    return value ? `${f.label}: ${value}` : "";
+  })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function fieldContent(day: LessonDay, key: keyof LessonDay, isEnglishTeacher: boolean): string {
+  if (key === "desenvolvimento") return developmentContent(day, isEnglishTeacher);
+  return stripHtml(day[key] as string | undefined);
+}
+
 // Página estática/impressão pro Supervisor (o "Advisor" do sistema antigo) —
-// só leitura, com uma caneta interativa por cima pra rabiscar, salvar e
-// imprimir com as anotações.
+// só leitura, com uma caneta interativa e anotações por seleção de texto,
+// salvas e prontas pra imprimir.
 export function SupervisorPage() {
   const { lessonWeekId = "" } = useParams();
   const { data: week, isLoading } = useQuery({
@@ -36,11 +71,14 @@ export function SupervisorPage() {
   const [color, setColor] = useState("#e21f1f");
   const [thickness, setThickness] = useState(4);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  // Ajusta o canvas pro tamanho real do conteúdo (com a resolução da tela,
-  // pra não ficar borrado) e recarrega o rabisco salvo, se existir. Só roda
-  // uma vez quando os dados chegam — redimensionar depois apagaria o que já
-  // foi desenhado, e essa tela não é o tipo de coisa que fica sendo
-  // redimensionada durante o uso normal (revisão/impressão).
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [pendingRect, setPendingRect] = useState<DOMRect | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const pendingRangeRef = useRef<Range | null>(null);
+  const appliedHighlightsRef = useRef(false);
+
+  // Ajusta o canvas pro tamanho real do conteúdo e recarrega o rabisco
+  // salvo, se existir. Só roda uma vez quando os dados chegam.
   useEffect(() => {
     if (!week || isLoading) return;
     const canvas = canvasRef.current;
@@ -62,7 +100,102 @@ export function SupervisorPage() {
       img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
       img.src = savedDrawing;
     }
+
+    const saved = week.supervisorNote?.annotations ?? [];
+    setAnnotations(saved);
   }, [week, isLoading]);
+
+  // Reaplica o destaque amarelo das anotações salvas assim que o conteúdo
+  // (texto real do planejamento) estiver renderizado — procura a citação
+  // salva no texto e embrulha num <mark>.
+  useEffect(() => {
+    if (appliedHighlightsRef.current) return;
+    if (!annotations.length || !contentRef.current) return;
+    for (const annotation of annotations) {
+      applyHighlightByQuote(contentRef.current, annotation.quote, annotation.id);
+    }
+    appliedHighlightsRef.current = true;
+  }, [annotations]);
+
+  function wrapRange(range: Range, id: string) {
+    const mark = document.createElement("mark");
+    mark.className = "supervisor-highlight";
+    mark.dataset.annotationId = id;
+    try {
+      range.surroundContents(mark);
+    } catch {
+      // Seleção atravessa mais de um elemento — não dá pra embrulhar com
+      // segurança sem bagunçar o layout. A anotação continua salva, só não
+      // aparece destacada em amarelo nesse caso raro.
+    }
+  }
+
+  function applyHighlightByQuote(root: HTMLElement, quote: string, id: string) {
+    if (!quote) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Text | null;
+    // eslint-disable-next-line no-cond-assign
+    while ((node = walker.nextNode() as Text | null)) {
+      const idx = node.data.indexOf(quote);
+      if (idx === -1) continue;
+      const range = document.createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, idx + quote.length);
+      wrapRange(range, id);
+      return;
+    }
+  }
+
+  function handleContentMouseUp() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const text = selection.toString().trim();
+    if (!text || !contentRef.current?.contains(selection.anchorNode)) return;
+    const range = selection.getRangeAt(0).cloneRange();
+    pendingRangeRef.current = range;
+    setPendingRect(range.getBoundingClientRect());
+    setNoteDraft("");
+  }
+
+  async function persist(nextAnnotations: Annotation[], drawingDataUrl?: string) {
+    setSaveStatus("saving");
+    try {
+      await api.saveSupervisorNote(lessonWeekId, {
+        drawingDataUrl: drawingDataUrl ?? week?.supervisorNote?.drawingDataUrl ?? null,
+        annotations: nextAnnotations,
+      });
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
+  }
+
+  function confirmAnnotation() {
+    if (!noteDraft.trim() || !pendingRangeRef.current) {
+      setPendingRect(null);
+      return;
+    }
+    const id = crypto.randomUUID();
+    const quote = pendingRangeRef.current.toString();
+    wrapRange(pendingRangeRef.current, id);
+    const next = [...annotations, { id, quote, note: noteDraft.trim() }];
+    setAnnotations(next);
+    setPendingRect(null);
+    setNoteDraft("");
+    window.getSelection()?.removeAllRanges();
+    void persist(next);
+  }
+
+  function removeAnnotation(id: string) {
+    document.querySelectorAll(`mark[data-annotation-id="${id}"]`).forEach((el) => {
+      const parent = el.parentNode;
+      while (el.firstChild) parent?.insertBefore(el.firstChild, el);
+      parent?.removeChild(el);
+    });
+    const next = annotations.filter((a) => a.id !== id);
+    setAnnotations(next);
+    void persist(next);
+  }
 
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -102,20 +235,15 @@ export function SupervisorPage() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  async function saveNote() {
+  async function saveEverything() {
     if (!canvasRef.current) return;
-    setSaveStatus("saving");
-    try {
-      const dataUrl = canvasRef.current.toDataURL("image/png");
-      await api.saveSupervisorNote(lessonWeekId, dataUrl);
-      setSaveStatus("saved");
-    } catch {
-      setSaveStatus("error");
-    }
+    await persist(annotations, canvasRef.current.toDataURL("image/png"));
   }
 
   if (isLoading) return <p className="loading">Carregando…</p>;
   if (!week) return <p className="loading">Planejamento não encontrado.</p>;
+
+  const isEnglishTeacher = week.teacher.isEnglishTeacher;
 
   return (
     <div className="supervisor-page">
@@ -129,16 +257,17 @@ export function SupervisorPage() {
           <input type="range" min={1} max={20} value={thickness} onChange={(e) => setThickness(Number(e.target.value))} />
         </label>
         <button type="button" onClick={clearCanvas}>Limpar rabisco</button>
-        <button type="button" onClick={() => void saveNote()}>
-          {saveStatus === "saving" ? "Salvando…" : "Salvar rabisco"}
+        <button type="button" onClick={() => void saveEverything()}>
+          {saveStatus === "saving" ? "Salvando…" : "Salvar tudo"}
         </button>
         <button type="button" onClick={() => window.print()}>Imprimir</button>
         {saveStatus === "saved" && <span className="hint">Salvo.</span>}
         {saveStatus === "error" && <span className="hint" style={{ color: "#b00020" }}>Falha ao salvar.</span>}
+        <span className="hint">Selecione um trecho do texto pra adicionar uma anotação.</span>
       </div>
 
       <div className="supervisor-content-wrap">
-        <div ref={contentRef} className="supervisor-content">
+        <div ref={contentRef} className="supervisor-content" onMouseUp={handleContentMouseUp}>
           <h1>
             Planejamento — {week.class.name} — {week.teacher.name}
           </h1>
@@ -153,13 +282,13 @@ export function SupervisorPage() {
               <table key={weekday.key} className="supervisor-table">
                 <thead>
                   <tr>
-                    <th colSpan={FIELDS.length}>
+                    <th colSpan={BASE_FIELDS.length}>
                       {weekday.label} — {new Date(dayRows[0].date).toLocaleDateString("pt-BR")}
                       {dayRows[0].isRecess ? " (Recesso)" : ""}
                     </th>
                   </tr>
                   <tr>
-                    {FIELDS.map((f) => (
+                    {BASE_FIELDS.map((f) => (
                       <th key={f.key}>{f.label}</th>
                     ))}
                   </tr>
@@ -167,8 +296,10 @@ export function SupervisorPage() {
                 <tbody>
                   {dayRows.map((day) => (
                     <tr key={`${day.date}-${day.slot}`}>
-                      {FIELDS.map((f) => (
-                        <td key={f.key}>{stripHtml(day[f.key] as string)}</td>
+                      {BASE_FIELDS.map((f) => (
+                        <td key={f.key} className="supervisor-cell">
+                          {fieldContent(day, f.key, isEnglishTeacher)}
+                        </td>
                       ))}
                     </tr>
                   ))}
@@ -182,6 +313,22 @@ export function SupervisorPage() {
               <strong>Mensagem da coordenação:</strong> {stripHtml(week.coordMessage)}
             </p>
           )}
+
+          {annotations.length > 0 && (
+            <div className="supervisor-annotation-list">
+              <h2>Anotações do Supervisor</h2>
+              <ol>
+                {annotations.map((a, i) => (
+                  <li key={a.id}>
+                    <strong>{i + 1}.</strong> "{a.quote}" — {a.note}{" "}
+                    <button type="button" className="no-print annotation-remove" onClick={() => removeAnnotation(a.id)}>
+                      remover
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
 
         <canvas
@@ -193,6 +340,24 @@ export function SupervisorPage() {
           onPointerLeave={endDraw}
         />
       </div>
+
+      {pendingRect && (
+        <div
+          className="annotation-popover no-print"
+          style={{ top: pendingRect.bottom + window.scrollY + 6, left: pendingRect.left + window.scrollX }}
+        >
+          <textarea
+            autoFocus
+            placeholder="Escreva a anotação…"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+          />
+          <div className="annotation-popover-actions">
+            <button type="button" onClick={confirmAnnotation}>Adicionar</button>
+            <button type="button" onClick={() => setPendingRect(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

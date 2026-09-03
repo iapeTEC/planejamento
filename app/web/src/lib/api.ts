@@ -124,6 +124,12 @@ export interface LessonWeek {
   days: LessonDay[];
 }
 
+export interface SupervisorAnnotation {
+  id: string;
+  quote: string;
+  note: string;
+}
+
 export interface SupervisorView {
   id: string;
   term: string;
@@ -132,7 +138,7 @@ export interface SupervisorView {
   teacher: { name: string; isEnglishTeacher: boolean };
   class: { name: string };
   days: LessonDay[];
-  supervisorNote: { drawingDataUrl: string | null } | null;
+  supervisorNote: { drawingDataUrl: string | null; annotations: SupervisorAnnotation[] } | null;
 }
 
 export const api = {
@@ -140,10 +146,13 @@ export const api = {
 
   supervisorView: (lessonWeekId: string) => request<SupervisorView>(`/supervisor/${lessonWeekId}`),
 
-  saveSupervisorNote: (lessonWeekId: string, drawingDataUrl: string | null) =>
-    request<{ drawingDataUrl: string | null }>(`/supervisor/${lessonWeekId}/note`, {
+  saveSupervisorNote: (
+    lessonWeekId: string,
+    payload: { drawingDataUrl: string | null; annotations: SupervisorAnnotation[] },
+  ) =>
+    request<{ drawingDataUrl: string | null; annotations: SupervisorAnnotation[] }>(`/supervisor/${lessonWeekId}/note`, {
       method: "PUT",
-      body: JSON.stringify({ drawingDataUrl }),
+      body: JSON.stringify(payload),
     }),
 
   lessonWeek: (classId: string, weekStart: string) =>

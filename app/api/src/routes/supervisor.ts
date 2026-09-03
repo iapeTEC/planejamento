@@ -28,9 +28,14 @@ supervisorRouter.get("/:lessonWeekId", requireTeacherOrCoordinator, async (req, 
   res.json(week);
 });
 
-const noteInput = z.object({ drawingDataUrl: z.string().nullable() });
+const annotationInput = z.object({ id: z.string(), quote: z.string(), note: z.string() });
+const noteInput = z.object({
+  drawingDataUrl: z.string().nullable(),
+  annotations: z.array(annotationInput).default([]),
+});
 
-// PUT /api/supervisor/:lessonWeekId/note — salva o rabisco (imagem) por cima da versão estática.
+// PUT /api/supervisor/:lessonWeekId/note — salva o rabisco (imagem) e as
+// anotações por trecho de texto, por cima da versão estática.
 supervisorRouter.put("/:lessonWeekId/note", requireTeacherOrCoordinator, async (req, res) => {
   const parsed = noteInput.safeParse(req.body);
   if (!parsed.success) {
@@ -48,10 +53,11 @@ supervisorRouter.put("/:lessonWeekId/note", requireTeacherOrCoordinator, async (
     return;
   }
 
+  const data = { drawingDataUrl: parsed.data.drawingDataUrl, annotations: parsed.data.annotations };
   const note = await prisma.supervisorNote.upsert({
     where: { lessonWeekId: req.params.lessonWeekId },
-    create: { lessonWeekId: req.params.lessonWeekId, drawingDataUrl: parsed.data.drawingDataUrl },
-    update: { drawingDataUrl: parsed.data.drawingDataUrl },
+    create: { lessonWeekId: req.params.lessonWeekId, ...data },
+    update: data,
   });
 
   res.json(note);

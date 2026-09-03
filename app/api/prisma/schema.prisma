@@ -163,6 +163,8 @@ model SupervisorNote {
   id             String   @id @default(uuid())
   lessonWeekId   String   @unique
   drawingDataUrl String?  @db.Text
+  // Anotações por trecho selecionado: [{ id, quote, note }, ...]
+  annotations    Json?
   updatedAt      DateTime @updatedAt
 
   lessonWeek LessonWeek @relation(fields: [lessonWeekId], references: [id], onDelete: Cascade)
