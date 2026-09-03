@@ -125,7 +125,11 @@ export function TeacherPlanner() {
   if (!teacher.isEnglishTeacher) fields.push({ key: "tarefas", label: "Tarefas" });
 
   return (
-    <div className="planner">
+    <>
+      <header className="hero">
+        <img className="hero-img" src={teacher.isEnglishTeacher ? "/header.png" : "/cabecalho.png"} alt="Cabeçalho" />
+      </header>
+      <div className="planner">
       <header className="planner-header">
         <h1>Planejamento — {teacher.name}</h1>
         <div className="week-controls">
@@ -241,6 +245,7 @@ export function TeacherPlanner() {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

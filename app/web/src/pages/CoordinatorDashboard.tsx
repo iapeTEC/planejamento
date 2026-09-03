@@ -175,7 +175,11 @@ export function CoordinatorDashboard() {
   }
 
   return (
-    <div className="dashboard">
+    <>
+      <header className="hero">
+        <img className="hero-img" src="/cabecalho.png" alt="Cabeçalho" />
+      </header>
+      <div className="dashboard">
       <header>
         <h1>Coordenação</h1>
         <button
@@ -212,6 +216,7 @@ export function CoordinatorDashboard() {
           </table>
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }
