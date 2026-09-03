@@ -86,6 +86,7 @@ model LessonWeek {
   class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
   days    LessonDay[]
   agenda  Agenda?
+  supervisorNote SupervisorNote?
 
   @@unique([teacherId, classId, weekStart])
   @@unique([teacherId, legacyKey])
@@ -151,6 +152,18 @@ model Agenda {
   imageUrl     String?
   updatedBy    String?
   updatedAt    DateTime       @updatedAt
+
+  lessonWeek LessonWeek @relation(fields: [lessonWeekId], references: [id], onDelete: Cascade)
+}
+
+// Versão estática/impressão do planejamento pra quem supervisiona (o
+// "Advisor" do sistema antigo) — link só-leitura + rabisco à mão livre por
+// cima, salvo como imagem pra sobreviver a reload e sair na impressão.
+model SupervisorNote {
+  id             String   @id @default(uuid())
+  lessonWeekId   String   @unique
+  drawingDataUrl String?  @db.Text
+  updatedAt      DateTime @updatedAt
 
   lessonWeek LessonWeek @relation(fields: [lessonWeekId], references: [id], onDelete: Cascade)
 }

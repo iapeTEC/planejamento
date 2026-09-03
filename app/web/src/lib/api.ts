@@ -124,8 +124,27 @@ export interface LessonWeek {
   days: LessonDay[];
 }
 
+export interface SupervisorView {
+  id: string;
+  term: string;
+  weekStart: string;
+  coordMessage: string | null;
+  teacher: { name: string; isEnglishTeacher: boolean };
+  class: { name: string };
+  days: LessonDay[];
+  supervisorNote: { drawingDataUrl: string | null } | null;
+}
+
 export const api = {
   me: () => request<Teacher>("/teachers/me"),
+
+  supervisorView: (lessonWeekId: string) => request<SupervisorView>(`/supervisor/${lessonWeekId}`),
+
+  saveSupervisorNote: (lessonWeekId: string, drawingDataUrl: string | null) =>
+    request<{ drawingDataUrl: string | null }>(`/supervisor/${lessonWeekId}/note`, {
+      method: "PUT",
+      body: JSON.stringify({ drawingDataUrl }),
+    }),
 
   lessonWeek: (classId: string, weekStart: string) =>
     request<LessonWeek | null>(`/lesson-weeks?classId=${classId}&weekStart=${weekStart}`),

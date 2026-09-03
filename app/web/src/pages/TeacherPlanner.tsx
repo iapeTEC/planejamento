@@ -310,7 +310,12 @@ export function TeacherPlanner() {
             </span>
             <button className="btn btn-ghost" type="button" onClick={() => void flush()}>Salvar</button>
             {weekQuery.data?.id && (
-              <Link className="btn btn-primary agenda-link" to={`/agenda/${weekQuery.data.id}?t=${getTeacherToken()}`}>Ir para Agenda</Link>
+              <>
+                <Link className="btn btn-primary agenda-link" to={`/agenda/${weekQuery.data.id}?t=${getTeacherToken()}`}>Ir para Agenda</Link>
+                <Link className="btn btn-ghost" to={`/supervisor/${weekQuery.data.id}?t=${getTeacherToken()}`} target="_blank" rel="noreferrer">
+                  Versão do Supervisor
+                </Link>
+              </>
             )}
           </div>
         </div>

@@ -770,3 +770,40 @@ h1 { color: var(--navy); }
     border-bottom: 1px solid rgba(26, 35, 71, 0.18);
   }
 }
+
+/* =========================
+   SUPERVISOR (versão estática/impressão + rabisco)
+========================= */
+.supervisor-page { max-width: 1000px; margin: 0 auto; padding: 16px; }
+
+.supervisor-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  background: #fff; border: 1px solid #d8dce3; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px; position: sticky; top: 0; z-index: 50;
+}
+.supervisor-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.supervisor-toolbar button {
+  background: var(--purple-1); color: #fff; border: none; border-radius: 6px;
+  padding: 6px 12px; cursor: pointer; font-weight: 700;
+}
+
+.supervisor-content-wrap { position: relative; background: #fff; border-radius: 10px; overflow: hidden; }
+.supervisor-content { padding: 24px; }
+.supervisor-content h1 { color: var(--navy); font-size: 20px; margin: 0 0 4px; }
+
+.supervisor-table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+.supervisor-table th, .supervisor-table td { border: 1px solid #d8dce3; padding: 8px; text-align: left; vertical-align: top; }
+.supervisor-table thead tr:first-child th { background: var(--navy); color: #fff; font-size: 14px; }
+.supervisor-table thead tr:last-child th { background: var(--orange); font-size: 12px; }
+.supervisor-coord { margin-top: 16px; padding: 10px; background: #fdf6ea; border-radius: 8px; }
+
+.supervisor-canvas {
+  position: absolute; left: 0; top: 0; touch-action: none; cursor: crosshair;
+}
+
+@media print {
+  .no-print, .supervisor-toolbar { display: none !important; }
+  body { background: #fff; }
+  .supervisor-page { max-width: none; padding: 0; }
+  .supervisor-content-wrap { border: none; }
+}
