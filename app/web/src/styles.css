@@ -402,8 +402,6 @@ h1 { color: var(--navy); }
   background: transparent;
 }
 
-.english-teacher .teacher-page .day-badge { height: 80px; }
-
 .teacher-page .dayNum {
   width: 52px;
   display: flex;
