@@ -866,6 +866,8 @@ h1 { color: var(--navy); }
   border-top-color: var(--navy);
 }
 .supervisor-highlight:hover::after,
-.supervisor-highlight:hover::before {
+.supervisor-highlight:hover::before,
+.supervisor-highlight.is-active::after,
+.supervisor-highlight.is-active::before {
   opacity: 1; visibility: visible;
 }

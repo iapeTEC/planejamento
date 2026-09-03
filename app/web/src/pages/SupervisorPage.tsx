@@ -153,7 +153,7 @@ export function SupervisorPage() {
     }
   }
 
-  function handleContentMouseUp() {
+  function tryOpenAnnotationPopover() {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
     const text = selection.toString().trim();
@@ -162,6 +162,38 @@ export function SupervisorPage() {
     pendingRangeRef.current = range;
     setPendingRect(range.getBoundingClientRect());
     setNoteDraft("");
+  }
+
+  // No celular não tem mouseup — a seleção de texto (segurar o dedo, ajustar
+  // as alcinhas) só "assenta" um pouco depois de soltar. selectionchange
+  // pega isso em qualquer dispositivo; o debounce evita abrir o balão no
+  // meio do arrasto, só quando a seleção parar de mudar.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    function onSelectionChange() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(tryOpenAnnotationPopover, 400);
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", onSelectionChange);
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Toque num trecho já destacado: mostra o balão do comentário (não tem
+  // "passar o mouse" no celular). Toca de novo, ou fora, pra fechar.
+  function handleContentClick(e: React.MouseEvent<HTMLDivElement>) {
+    const mark = (e.target as HTMLElement).closest<HTMLElement>(".supervisor-highlight");
+    const root = contentRef.current;
+    if (!mark) {
+      root?.querySelectorAll(".supervisor-highlight.is-active").forEach((el) => el.classList.remove("is-active"));
+      return;
+    }
+    const wasActive = mark.classList.contains("is-active");
+    root?.querySelectorAll(".supervisor-highlight.is-active").forEach((el) => el.classList.remove("is-active"));
+    if (!wasActive) mark.classList.add("is-active");
   }
 
   async function persist(nextAnnotations: Annotation[], drawingDataUrl?: string) {
@@ -282,7 +314,12 @@ export function SupervisorPage() {
       </div>
 
       <div className="supervisor-content-wrap">
-        <div ref={contentRef} className="supervisor-content" onMouseUp={handleContentMouseUp}>
+        <div
+          ref={contentRef}
+          className="supervisor-content"
+          onMouseUp={tryOpenAnnotationPopover}
+          onClick={handleContentClick}
+        >
           <h1>
             Planejamento — {week.class.name} — {week.teacher.name}
           </h1>
