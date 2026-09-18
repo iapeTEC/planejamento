@@ -145,6 +145,28 @@ export function TeacherPlanner() {
 
   const { status, scheduleSave, flush } = useAutosave(local);
 
+  // Trava de segurança contra o acidente que apagou a semana de 14/09 da
+  // Raquel no sistema antigo: ao trocar de semana o `local` vira o template em
+  // branco (emptyDays) ANTES da resposta do servidor. Se a leitura falhar, o
+  // efeito de hidratação nunca roda, a tela fica em branco — e qualquer tecla
+  // digitada dispararia um PUT que sobrescreve os dias salvos com vazio.
+  // Só libera gravar quando a semana foi de fato resolvida: ou veio do
+  // servidor (isSuccess — inclui `null`, que é semana nova legítima), ou é um
+  // rascunho local não sincronizado (hydratedKeyRef), que precisa subir.
+  function canSave(): boolean {
+    return hydratedKeyRef.current === weekKey || weekQuery.isSuccess;
+  }
+
+  function guardedSchedule() {
+    if (!canSave()) return;
+    scheduleSave();
+  }
+
+  async function guardedFlush() {
+    if (!canSave()) return;
+    await flush();
+  }
+
   if (!getTeacherToken()) {
     return <p className="loading">Abra pelo link enviado pela coordenação para acessar seu planejamento.</p>;
   }
@@ -177,12 +199,12 @@ export function TeacherPlanner() {
       days[index] = { ...days[index], [field]: value };
       return { ...prev, days };
     });
-    scheduleSave();
+    guardedSchedule();
   }
 
   function updateCoordMessage(value: string) {
     setLocal((prev) => ({ ...prev, coordMessage: value }));
-    scheduleSave();
+    guardedSchedule();
   }
 
   function moveClass(direction: number) {
@@ -217,7 +239,7 @@ export function TeacherPlanner() {
                 <RichTextEditor
                   value={day[keyName] ?? ""}
                   onChange={(value) => updateDay(index, keyName, value)}
-                  onBlur={() => void flush()}
+                  onBlur={() => void guardedFlush()}
                 />
               </label>
             ))}
@@ -229,7 +251,7 @@ export function TeacherPlanner() {
                 <RichTextEditor
                   value={day[keyName] ?? ""}
                   onChange={(value) => updateDay(index, keyName, value)}
-                  onBlur={() => void flush()}
+                  onBlur={() => void guardedFlush()}
                 />
               </label>
             ))}
@@ -243,7 +265,7 @@ export function TeacherPlanner() {
         className="rich"
         value={(day[key] as string) ?? ""}
         onChange={(value) => updateDay(index, key, value)}
-        onBlur={() => void flush()}
+        onBlur={() => void guardedFlush()}
         aria-label={String(key)}
       />
     );
@@ -257,7 +279,7 @@ export function TeacherPlanner() {
           className="rich"
           value={day.agendaHtml ?? ""}
           onChange={(value) => updateDay(index, "agendaHtml", value)}
-          onBlur={() => void flush()}
+          onBlur={() => void guardedFlush()}
           placeholder="Texto da agenda para os pais…"
           aria-label="Agenda"
         />
@@ -308,7 +330,12 @@ export function TeacherPlanner() {
               {status === "dirty" && "Alterações não salvas…"}
               {status === "error" && "Não foi possível salvar agora"}
             </span>
-            <button className="btn btn-ghost" type="button" onClick={() => void flush()}>Salvar</button>
+            {weekQuery.isError && (
+              <span className="save-feedback save-feedback--error" role="alert">
+                Não consegui carregar esta semana. A edição está travada para não apagar o que já está salvo — recarregue a página.
+              </span>
+            )}
+            <button className="btn btn-ghost" type="button" onClick={() => void guardedFlush()}>Salvar</button>
             {weekQuery.data?.id && (
               <>
                 <Link className="btn btn-primary agenda-link" to={`/agenda/${weekQuery.data.id}?t=${getTeacherToken()}`}>Ir para Agenda</Link>
@@ -407,7 +434,7 @@ export function TeacherPlanner() {
         <section className="coord">
           <div className="coord-label">{teacher.isEnglishTeacher ? "COORDINATION MESSAGE:" : "MENSAGEM DA COORDENAÇÃO:"}</div>
           <div className="coord-box">
-            <RichTextEditor className="coord-edit rich" value={local.coordMessage} onChange={updateCoordMessage} onBlur={() => void flush()} />
+            <RichTextEditor className="coord-edit rich" value={local.coordMessage} onChange={updateCoordMessage} onBlur={() => void guardedFlush()} />
           </div>
         </section>
       </div>

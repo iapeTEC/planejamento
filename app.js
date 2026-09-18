@@ -59,6 +59,14 @@ const state = {
   idToken: sessionStorage.getItem("lessonPrepIdToken") || "",
   googleUser: null,
   authReady: false,
+  // Guarda contra perda de planejamento: só é seguro gravar uma semana depois
+  // de ter LIDO o que o servidor tem pra ela. `loadedKey` guarda a chave que
+  // foi carregada com sucesso; enquanto ela não bater com makeKey(), nenhum
+  // save sai daqui. Sem isso, uma falha de rede no load deixava a tela em
+  // branco (buildInitialRows) e o primeiro blur gravava esse branco por cima
+  // do planejamento real — foi o que apagou a semana de 14/09 da Raquel.
+  loadedKey: null,
+  loadFailed: false,
 };
 
 const GENERAL_ROWS_PER_DAY = 6;
@@ -940,7 +948,7 @@ async function setClass(newClass){
   hydrateUI();
 
   // depois tenta buscar se existe algo salvo pra essa turma
-  await loadFromBackend();
+  await loadWeekIntoState();
 }
 
 async function cycleClass(direction){
@@ -1157,9 +1165,79 @@ async function loadFromBackend(key) {
 }
 
 
+// Wrapper obrigatório em volta do loadFromBackend. Toda troca de semana/turma
+// e o init passam por aqui. Regra: só libera a gravação (state.loadedKey) se a
+// leitura do servidor TERMINOU. Uma semana que ainda não existe devolve null e
+// isso é sucesso — o que não pode é falha de rede virar "semana em branco
+// salvável".
+async function loadWeekIntoState(){
+  const key = makeKey();
+  state.loadedKey = null;
+  state.loadFailed = false;
+  renderLoadGuardBanner();
+
+  if(!getTeacherId() || !state.className) return null;
+
+  try {
+    const payload = await loadFromBackend(key);
+    state.loadedKey = key;
+    return payload;
+  } catch (err) {
+    state.loadFailed = true;
+    console.error("loadFromBackend falhou para", key, err);
+    renderLoadGuardBanner();
+    return null;
+  } finally {
+    renderLoadGuardBanner();
+  }
+}
+
+// Faixa fixa no topo avisando que a edição está travada. Sem isso a professora
+// digitaria a semana inteira achando que está salvando.
+function renderLoadGuardBanner(){
+  const id = "loadGuardBanner";
+  let el = document.getElementById(id);
+
+  if(!state.loadFailed){
+    if(el) el.remove();
+    return;
+  }
+  if(!el){
+    el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = [
+      "position:fixed","top:0","left:0","right:0","z-index:99998",
+      "background:#b3261e","color:#fff","padding:12px 16px",
+      "font-weight:800","text-align:center","box-shadow:0 4px 14px rgba(0,0,0,.25)"
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "";
+
+  const msg = document.createElement("span");
+  msg.textContent = "Não consegui carregar esta semana do servidor. A gravação está travada para não apagar o seu planejamento. ";
+  el.appendChild(msg);
+
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "Tentar de novo";
+  retry.style.cssText = "margin-left:8px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  retry.addEventListener("click", () => { loadWeekIntoState(); });
+  el.appendChild(retry);
+}
+
+
 function saveToBackend(options = {}) {
   if(!getTeacherId() || !state.className){
     if(!options.silent) toast("Link do professor inválido.");
+    return Promise.resolve();
+  }
+
+  // NUNCA gravar uma semana que não foi lida do servidor: o que está na tela
+  // nesse caso é o template em branco, não o planejamento da professora.
+  if(state.loadedKey !== makeKey()){
+    console.warn("saveToBackend bloqueado: semana não carregada do servidor.", makeKey());
+    if(!options.silent) toast("Ainda não consegui carregar esta semana. Não vou salvar para não apagar o que já está lá.");
     return Promise.resolve();
   }
 
@@ -1269,7 +1347,7 @@ async function setWeek(mondayDate){
   });
 
   hydrateUI();
-  await loadFromBackend();
+  await loadWeekIntoState();
 }
 
 /* =========================
@@ -1399,7 +1477,7 @@ async function init(){
     saveBtn.addEventListener("click", saveToBackend);
   }
 
-  await loadFromBackend();
+  await loadWeekIntoState();
 }
 
 init();
