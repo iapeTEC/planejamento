@@ -127,20 +127,58 @@ por construção.
   chegou a definir um modelo `AuditLog` no Prisma, mas ele nunca foi ligado —
   a tabela está com 0 linhas.)
 
-### 3.4 O gatilho não é determinável, e isso é parte do problema
+### 3.4 O gatilho: JSONP sem timeout + estrangulamento do Apps Script
 
-Alguma coisa precisa fazer a leitura falhar. `apiGet` usa **JSONP** — injeta uma
-`<script>` e espera o callback. Esse mecanismo:
+**Correção de uma versão anterior deste documento.** Eu havia escrito que o
+gatilho era indeterminável e que os candidatos eram "rede da escola, cota do
+Apps Script, aba suspensa no celular". Estava errado. Ao abrir o link real da
+professora num navegador de verdade, o gatilho apareceu na primeira tentativa —
+e não é raro nem aleatório.
 
-- não tem timeout: se o callback nunca vem, a promise fica pendurada para sempre;
-- não tem detalhe de erro: `script.onerror` dispara igual para queda de wifi,
-  throttling do Apps Script, ou um redirect de login — e a mensagem é sempre a
-  mesma string genérica.
+`apiGet` usa **JSONP**: injeta uma `<script>` e espera o callback. Esse
+mecanismo não tem timeout por natureza. Se a resposta **não for** o JavaScript
+esperado, o callback nunca é chamado — e o `script.onerror` **também não
+dispara**, porque o arquivo carregou, só não continha o que se esperava. A
+promise fica pendente **para sempre**.
 
-Candidatos plausíveis: rede da escola, cota/latência do Apps Script, aba
-suspensa no celular. **Não dá para saber qual foi** — e essa é justamente a
-consequência de (3.3): não há log de nada. A investigação só chegou ao culpado
-por comparação forense com o snapshot, não por observação.
+E é exatamente isso que acontece: o Apps Script devolve uma **página HTML do
+Google** quando estrangula uma rajada de chamadas. Reproduzido com três `curl`
+seguidos na URL `/exec` — o terceiro voltou HTML em vez de JSON. A página faz
+três chamadas no carregamento (`listCalendar`, `getTeacher`, `get`), mais uma a
+cada 60 segundos pelo auto-refresh do calendário.
+
+A cadeia completa, então:
+
+1. `init()` fica travado no `await loadCurrentTeacher()` — a promise pendurada.
+2. `loadCurrentTeacher` é quem preenche `state.className` a partir do cadastro.
+   Sem ele, `init()` **nunca chega** a carregar a semana.
+3. A tela fica com o template em branco montado por `applyQueryState()`. Nada
+   avisa: não há erro, não há spinner, não há timeout.
+4. Numa recarga, `state.className` vem da **URL** — porque o próprio app grava
+   `class=` nela depois da primeira visita bem-sucedida (`setQueryParams`).
+   Então a checagem `if(!state.className)` do `saveToBackend` passa.
+5. Primeiro `blur` → grava o template em branco por cima.
+
+Observado ao vivo: a página da Raquel abriu com `loadedKey: null` e
+`loadFailed: false` — ou seja, a leitura nem terminou nem falhou. E, num
+carregamento medido depois da correção, o ciclo de retentativas levou **18
+segundos** para se resolver sozinho. Dezoito segundos em que a professora, antes
+da correção, encarava uma tela em branco sem nenhuma indicação.
+
+O que estava certo na versão anterior deste documento é a consequência: sem log
+nenhum, a investigação só chegou ao culpado por comparação forense com o
+snapshot. O que estava errado era supor que a causa fosse rara.
+
+### 3.4.1 O cache do navegador esconde a correção
+
+Descoberto no mesmo teste: a página estava executando um `app.js` **em cache**,
+mais velho que o arquivo servido pelo GitHub Pages (confirmado lendo
+`init.toString()` na própria página). As referências não tinham versão.
+
+Isso significa que uma correção publicada **não chega** a quem já tem o arquivo
+em cache — as professoras podiam seguir dias com a versão que apaga
+planejamento. Resolvido com `?v=<data>` em `app.js`, `admin.js` e `styles.css`.
+**Essa string precisa ser trocada a cada publicação** que mexa nesses arquivos.
 
 ### 3.5 Por que ninguém percebeu antes
 
@@ -223,3 +261,12 @@ de propósito**. O trade-off foi considerado aceitável (é uma ação rara, e o
    estado ruim ser persistido.
 5. **Manter o snapshot de migração.** `source-export-2026-09-03.json` foi o que
    permitiu recuperar. Não apagar.
+6. **Toda chamada de rede precisa de prazo.** JSONP não tem timeout embutido, e
+   "pendurado para sempre" é pior que "falhou": não aciona nenhum tratamento de
+   erro e é indistinguível de "ainda carregando". Vale para qualquer promise que
+   dependa da rede.
+7. **Abrir no navegador de verdade.** Tudo neste documento até a seção 3.3 saiu
+   de análise de código e comparação de dados, e estava certo — mas a causa real
+   do gatilho (3.4) e o problema de cache (3.4.1) só apareceram ao abrir o link
+   da professora num Chrome e olhar o estado da página. Nenhum dos dois era
+   dedutível do código.
