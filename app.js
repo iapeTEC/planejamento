@@ -1243,13 +1243,18 @@ async function loadWeekIntoState(){
   renderDraftBanner(null);
   setSaveStatus("idle");
 
-  if(!getTeacherId()) return null;
+  if(!getTeacherId()){
+    state.loading = false;
+    renderLoadGuardBanner();
+    return null;
+  }
 
   // Sem turma nao da pra montar a chave da semana - makeKey() viraria
   // "2026-09-14_", sem o nome da turma. Isso acontece quando o cadastro da
   // professora nao carregou. Antes era um return silencioso: a tela ficava em
   // branco e ninguem ficava sabendo.
   if(state.profileFailed || !state.className){
+    state.loading = false;
     state.loadFailed = true;
     renderLoadGuardBanner();
     return null;
@@ -1798,6 +1803,8 @@ function toast(text){
 ========================= */
 async function init(){
   applyQueryState();
+  state.loading = true;
+  renderLoadGuardBanner();
   initAuth();
   initToolbar();
   initToolbarAutoHide();
