@@ -1,5 +1,23 @@
 # Planejamento IAPE → SaaS escolar — Plano completo e estado atual
 
+## Status em 2026-09-18: planejamentos apagados no sistema antigo (corrigido)
+
+Quatro semanas foram sobrescritas pelo template em branco (Soraia 03/08 e
+10/08, Raquel 14/09, Carol 03/08 2º Ano) — 50 aulas, 19.496 chars. Todas
+restauradas do snapshot de 03/09. Causa raiz, alcance e lições em
+**`POSTMORTEM_2026-09-18_planejamento_apagado.md`**. Correção no commit
+`2ab4a18`.
+
+**Pendente**: colar `backend_fixed_2026-09-18.gs` no Apps Script e republicar
+como NOVA versão da implantação.
+
+Descoberta colateral que vale registrar: **as professoras continuam no sistema
+antigo** (Apps Script + Sheets, servido pelo GitHub Pages em
+`iapetec.github.io/planejamento`). O `planejamento.iape.tech` na VM está no ar e
+saudável, mas sem nenhum acesso de professora desde 07/09 — só healthcheck e
+bots no log do nginx. Bug relatado por professora = investigar o sistema antigo.
+
+
 ## Status em 2026-09-03 (mais recente): IA ligada de verdade + Agenda vazia corrigida
 
 **Botão "Gerar por IA" está funcionando de ponta a ponta em produção.**
