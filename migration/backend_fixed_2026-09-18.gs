@@ -17,6 +17,11 @@
 //   4. saveLesson_ recusa um payload 100% vazio por cima de um planejamento
 //      que tem conteúdo. Rede de segurança — a trava de verdade está no
 //      app.js, que não deixa gravar semana que não foi lida do servidor.
+//   5. gzip+base64 na célula (18/09, segunda rodada). Uma célula do Sheets
+//      aceita 50.000 caracteres e a semana inteira cabe numa só; 19 das 125
+//      semanas já passavam de 80% do teto e a maior estava em 99,3%. Comprimir
+//      derruba a maior para 12,3%. Linhas antigas em JSON puro continuam
+//      legíveis. Estourar o limite agora dá erro explícito, que o app mostra.
 //
 // COMO APLICAR: abrir o projeto no Apps Script, colar este conteúdo por cima
 // do backend.gs e publicar uma NOVA versão da implantação (Implantar >
@@ -31,6 +36,8 @@ const ADMIN_EMAILS = ["nayarapatricialima@gmail.com", "normafederal@gmail.com"];
 const TEACHERS_SHEET = "Teachers";
 const LESSONS_SHEET = "Lessons";
 const LESSONS_HISTORY_SHEET = "LessonsHistory";
+const GZIP_PREFIX = "gz:";
+const CELL_LIMIT = 50000;
 const CALENDAR_SHEET = "CalendarEvents";
 const TEACHERS_HEADERS = ["teacherId", "name", "classes", "spreadsheetId", "active", "createdAt", "isEnglishTeacher"];
 const CALENDAR_HEADERS = ["eventId", "date", "title", "html", "color", "isObservation", "importId", "createdAt"];
@@ -158,7 +165,29 @@ function getLesson_(teacherId, key) {
 
   const index = findLessonRowIndex_(rows, key);
   if (index === -1) return null;
-  return JSON.parse(rows[index][1] || "null");
+  return JSON.parse(decodeLessonJson_(rows[index][1]) || "null");
+}
+
+// Uma celula do Google Sheets aceita no maximo 50.000 caracteres, e a semana
+// inteira vai numa celula so. Em 03/09/2026, 19 das 125 semanas ja passavam de
+// 80% desse teto e a maior estava em 99,3% - a cerca de 336 caracteres de a
+// gravacao comecar a falhar. gzip+base64 reduz esse HTML de 3x a 12x nos dados
+// reais: a maior celula cai de 49.664 para 6.136 caracteres (12,3% do limite),
+// e o pior caso de compressao fica em 29,7%.
+//
+// Compatibilidade: linhas antigas, em JSON puro, continuam sendo lidas
+// normalmente - e passam a ser gravadas comprimidas no proximo save.
+function encodeLessonJson_(json) {
+  const comprimido = Utilities.gzip(Utilities.newBlob(json, "application/json"));
+  const texto = GZIP_PREFIX + Utilities.base64Encode(comprimido.getBytes());
+  return texto.length < json.length ? texto : json;
+}
+
+function decodeLessonJson_(valor) {
+  const texto = String(valor == null ? "" : valor);
+  if (texto.indexOf(GZIP_PREFIX) !== 0) return texto;
+  const bytes = Utilities.base64Decode(texto.substring(GZIP_PREFIX.length));
+  return Utilities.ungzip(Utilities.newBlob(bytes, "application/x-gzip")).getDataAsString();
 }
 
 // Com chaves duplicadas na aba (ver item 1 do cabeçalho), a linha boa é a mais
@@ -187,6 +216,14 @@ function saveLesson_(data) {
   const teacher = requireTeacher_(teacherId);
   const payload = data.payload || {};
   const json = JSON.stringify(payload);
+  const armazenado = encodeLessonJson_(json);
+
+  // Estourar o limite da celula fazia o setValues falhar; com o save cego de
+  // antes, a professora via "Salvo." mesmo assim. Agora a mensagem chega nela.
+  if (armazenado.length > CELL_LIMIT) {
+    throw new Error("Esta semana ficou grande demais para a planilha (" +
+      armazenado.length + " de " + CELL_LIMIT + " caracteres). Avise a coordenacao.");
+  }
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error("Servidor ocupado. Tente salvar de novo.");
@@ -199,18 +236,20 @@ function saveLesson_(data) {
     const index = findLessonRowIndex_(rows, data.key);
 
     if (index === -1) {
-      sheet.appendRow([data.key, json, now, teacherId]);
+      sheet.appendRow([data.key, armazenado, now, teacherId]);
       return;
     }
 
     const previous = String(rows[index][1] || "");
 
-    if (isBlankLesson_(payload) && !isBlankLessonJson_(previous)) {
+    if (isBlankLesson_(payload) && !isBlankLessonJson_(decodeLessonJson_(previous))) {
       throw new Error("Gravação recusada: o conteúdo enviado está vazio e apagaria o planejamento salvo.");
     }
 
+    // O historico guarda a celula exatamente como estava (comprimida ou nao),
+    // pra nao gastar tempo de script re-codificando o que ja esta pronto.
     archiveLesson_(ss, data.key, previous, rows[index][2], rows[index][3]);
-    sheet.getRange(index + 1, 2, 1, 3).setValues([[json, now, teacherId]]);
+    sheet.getRange(index + 1, 2, 1, 3).setValues([[armazenado, now, teacherId]]);
   } finally {
     lock.releaseLock();
   }
