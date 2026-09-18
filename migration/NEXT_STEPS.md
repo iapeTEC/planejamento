@@ -8,8 +8,11 @@ restauradas do snapshot de 03/09. Causa raiz, alcance e lições em
 **`POSTMORTEM_2026-09-18_planejamento_apagado.md`**. Correção no commit
 `2ab4a18`.
 
-**Pendente**: colar `backend_fixed_2026-09-18.gs` no Apps Script e republicar
-como NOVA versão da implantação.
+Backend publicado no mesmo dia via `clasp` (implantação `AKfycbwKhO...`,
+versão 11 — URL inalterada). Traz LockService, aba `LessonsHistory`, recusa de
+gravação vazia e gzip na célula. Esse último resolve um teto que ninguém tinha
+visto: a célula do Sheets aceita 50.000 caracteres e a maior semana estava em
+49.664 (99,3%).
 
 Descoberta colateral que vale registrar: **as professoras continuam no sistema
 antigo** (Apps Script + Sheets, servido pelo GitHub Pages em

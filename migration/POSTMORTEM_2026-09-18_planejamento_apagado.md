@@ -187,12 +187,19 @@ Commit `2ab4a18`.
 | `migration/backend_fixed_2026-09-18.gs` | `LockService`; aba `LessonsHistory` guardando a versão anterior de **toda** sobrescrita; recusa de payload vazio por cima de conteúdo; leitura pela linha mais recente quando há chave duplicada (desenterra o caso da Juliana). |
 | `app/web/src/pages/TeacherPlanner.tsx` | O sistema novo tinha a **mesma falha latente**: se o `weekQuery` falhasse, a tela ficava no `emptyDays` e a primeira tecla disparava um `PUT` que zerava os dias. Autosave passou a depender de `canSave()`. |
 
-### Pendente
+### Publicado
 
-**Colar `backend_fixed_2026-09-18.gs` no Apps Script e republicar como *nova
-versão* da implantação.** Sem republicar, a URL `/exec` continua servindo o
-código antigo. Enquanto isso não acontece, a proteção existe só no front-end —
-que é onde o bug estava, mas é uma camada só.
+O backend foi publicado via `clasp` em 18/09/2026, na **mesma implantação**
+(`AKfycbwKhO...` → versão 11), então a URL `/exec` não mudou e o
+`platform-config.js` não precisou ser tocado. Antes de sobrescrever, o código ao
+vivo foi baixado com `clasp pull` e conferido: era byte a byte igual a
+`backend_live_2026-09-02.gs`, ou seja, ninguém tinha mexido no script desde
+02/09.
+
+Verificado em produção contra a semana de menor risco do sistema (Raquel 14/09):
+leitura de linha antiga em JSON puro continua funcionando; gravação faz o
+round-trip pelo gzip preservando tudo byte a byte; e a tentativa de gravar a
+semana vazia foi **recusada** pelo servidor, com a semana intacta depois.
 
 ### Mudança de comportamento a conhecer
 
