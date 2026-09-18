@@ -76,6 +76,9 @@ const state = {
   saveStatus: "idle",
   saveDetail: "",
   savedAt: null,
+  // O cadastro da professora (que diz qual e a turma dela) carregou?
+  profileFailed: false,
+  loading: false,
 };
 
 const GENERAL_ROWS_PER_DAY = 6;
@@ -1113,7 +1116,38 @@ function applyLessonPayload(payload){
   hydrateUI();
 }
 
+// Uma chamada JSONP nao tem timeout por natureza: injeta uma <script> e espera
+// o callback. Se a resposta NAO for o JavaScript esperado - e o Google devolve
+// uma pagina HTML quando estrangula a rajada de chamadas do carregamento - o
+// callback nunca e chamado, o onerror NAO dispara, e a promise fica pendurada
+// para sempre.
+//
+// Era isso que travava o init() no `await loadCurrentTeacher()`: a pagina
+// ficava com o template em branco na tela, sem erro nenhum, e um blur bastava
+// pra gravar esse branco por cima do planejamento. O timeout abaixo transforma
+// "pendurado pra sempre e calado" em "erro visivel".
+const API_TIMEOUT_MS = 10000;
+const API_TENTATIVAS = 3;
+
+function esperar(ms){
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function apiGet(action, params = {}) {
+  let ultimoErro = null;
+  for(let tentativa = 0; tentativa < API_TENTATIVAS; tentativa++){
+    if(tentativa > 0) await esperar(800 * Math.pow(2, tentativa - 1));
+    try {
+      return await apiGetUmaVez(action, params);
+    } catch (err) {
+      ultimoErro = err;
+      console.warn("apiGet(" + action + ") tentativa " + (tentativa + 1) + " falhou:", err && err.message);
+    }
+  }
+  throw ultimoErro || new Error("Erro no backend");
+}
+
+function apiGetUmaVez(action, params) {
   const cb = "jsonp_cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
   const url = new URL(GAS_URL);
   url.searchParams.set("action", action);
@@ -1123,24 +1157,38 @@ async function apiGet(action, params = {}) {
     if(value !== undefined && value !== null) url.searchParams.set(key, value);
   });
 
-  return await new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    let terminou = false;
+    let timer = null;
 
     function cleanup() {
+      if(timer){ clearTimeout(timer); timer = null; }
       try { delete window[cb]; } catch (_) { window[cb] = undefined; }
       if (script && script.parentNode) script.parentNode.removeChild(script);
     }
 
     window[cb] = (resp) => {
+      if(terminou) return;
+      terminou = true;
       cleanup();
       if (resp && resp.ok) return resolve(resp.payload || null);
       return reject(new Error((resp && resp.error) || "Erro no backend"));
     };
 
     script.onerror = () => {
+      if(terminou) return;
+      terminou = true;
       cleanup();
-      reject(new Error("Falha ao carregar dados do backend."));
+      reject(new Error("falha de rede ao falar com o servidor"));
     };
+
+    timer = setTimeout(() => {
+      if(terminou) return;
+      terminou = true;
+      cleanup();
+      reject(new Error("o servidor nao respondeu em " + Math.round(API_TIMEOUT_MS / 1000) + "s"));
+    }, API_TIMEOUT_MS);
 
     script.src = url.toString();
     document.head.appendChild(script);
@@ -1195,8 +1243,20 @@ async function loadWeekIntoState(){
   renderDraftBanner(null);
   setSaveStatus("idle");
 
-  if(!getTeacherId() || !state.className) return null;
+  if(!getTeacherId()) return null;
 
+  // Sem turma nao da pra montar a chave da semana - makeKey() viraria
+  // "2026-09-14_", sem o nome da turma. Isso acontece quando o cadastro da
+  // professora nao carregou. Antes era um return silencioso: a tela ficava em
+  // branco e ninguem ficava sabendo.
+  if(state.profileFailed || !state.className){
+    state.loadFailed = true;
+    renderLoadGuardBanner();
+    return null;
+  }
+
+  state.loading = true;
+  renderLoadGuardBanner();
   try {
     const payload = await loadFromBackend(key);
     state.loadedKey = key;
@@ -1209,8 +1269,31 @@ async function loadWeekIntoState(){
     renderLoadGuardBanner();
     return null;
   } finally {
+    state.loading = false;
     renderLoadGuardBanner();
   }
+}
+
+// Recarrega tudo que a tela precisa, na ordem certa: primeiro o cadastro da
+// professora (que define a turma), depois a semana. E o que o botao "Tentar de
+// novo" faz - antes ele so retentava a semana, o que nao adianta quando quem
+// falhou foi o cadastro.
+async function recarregarTudo(){
+  state.loadFailed = false;
+  state.loading = true;
+  renderLoadGuardBanner();
+
+  if(getTeacherId()){
+    try{
+      await loadCurrentTeacher();
+      state.profileFailed = false;
+    }catch(err){
+      state.profileFailed = true;
+      console.error("loadCurrentTeacher falhou:", err);
+    }
+  }
+  state.loading = false;
+  await loadWeekIntoState();
 }
 
 /* =========================
@@ -1433,7 +1516,7 @@ function renderLoadGuardBanner(){
   const id = "loadGuardBanner";
   let el = document.getElementById(id);
 
-  if(!state.loadFailed){
+  if(!state.loadFailed && !state.loading){
     if(el) el.remove();
     return;
   }
@@ -1442,23 +1525,32 @@ function renderLoadGuardBanner(){
     el.id = id;
     el.style.cssText = [
       "position:fixed","top:0","left:0","right:0","z-index:99998",
-      "background:#b3261e","color:#fff","padding:12px 16px",
+      "color:#fff","padding:12px 16px",
       "font-weight:800","text-align:center","box-shadow:0 4px 14px rgba(0,0,0,.25)"
     ].join(";");
     document.body.appendChild(el);
   }
   el.innerHTML = "";
+  el.style.background = state.loading ? "#123a6b" : "#b3261e";
 
   const msg = document.createElement("span");
-  msg.textContent = "Não consegui carregar esta semana do servidor. A gravação está travada para não apagar o seu planejamento. ";
+  if(state.loading){
+    msg.textContent = "Carregando seu planejamento\u2026";
+  }else if(state.profileFailed || !state.className){
+    msg.textContent = "N\u00e3o consegui carregar o seu cadastro, ent\u00e3o n\u00e3o sei qual turma abrir. A edi\u00e7\u00e3o est\u00e1 travada para n\u00e3o apagar nada. ";
+  }else{
+    msg.textContent = "N\u00e3o consegui carregar esta semana do servidor. A grava\u00e7\u00e3o est\u00e1 travada para n\u00e3o apagar o seu planejamento. ";
+  }
   el.appendChild(msg);
 
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.textContent = "Tentar de novo";
-  retry.style.cssText = "margin-left:8px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
-  retry.addEventListener("click", () => { loadWeekIntoState(); });
-  el.appendChild(retry);
+  if(!state.loading){
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "Tentar de novo";
+    retry.style.cssText = "margin-left:8px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+    retry.addEventListener("click", () => { recarregarTudo(); });
+    el.appendChild(retry);
+  }
 }
 
 
@@ -1716,7 +1808,13 @@ async function init(){
   if(getTeacherId()) {
     try{
       await loadCurrentTeacher();
+      state.profileFailed = false;
     }catch(err){
+      // Nao desiste em silencio: marca a falha, o que trava a gravacao e faz a
+      // faixa aparecer. Antes, um cadastro que nao carregava deixava
+      // state.className vazio e a tela em branco, sem aviso nenhum.
+      state.profileFailed = true;
+      console.error("loadCurrentTeacher falhou:", err);
       toast(err.message || "Erro ao carregar cadastro do professor.");
     }
   }else{
