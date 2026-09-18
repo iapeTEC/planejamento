@@ -745,6 +745,7 @@ function hookEditListeners(){
       if(Number.isFinite(idx) && field){
         state.rows[idx][field] = el.innerHTML;
       }
+      scheduleDraft();
     });
 
     // ✅ mostra sempre no focus
@@ -763,6 +764,7 @@ function hookEditListeners(){
         if(!state.rows[idx].observations) state.rows[idx].observations = {};
         state.rows[idx].observations[eventId] = el.innerHTML;
       }
+      scheduleDraft();
     });
     el.addEventListener("focus", () => showToolbar());
     el.addEventListener("blur", () => saveToBackend({ silent: true }));
@@ -775,6 +777,7 @@ function hookEditListeners(){
     coord.addEventListener("focus", () => showToolbar());
     coord.addEventListener("input", () => {
       state.coordMessage = coord.innerHTML;
+      scheduleDraft();
     });
     coord.addEventListener("blur", () => saveToBackend({ silent: true }));
   }
@@ -786,6 +789,7 @@ function hookEditListeners(){
     dateField.addEventListener("focus", () => showToolbar());
     dateField.addEventListener("input", () => {
       state.dateText = dateField.innerText.trim();
+      scheduleDraft();
     });
     dateField.addEventListener("blur", () => saveToBackend({ silent: true }));
   }
@@ -1183,13 +1187,21 @@ async function loadWeekIntoState(){
   const key = makeKey();
   state.loadedKey = null;
   state.loadFailed = false;
+  state.serverSnapshot = null;
+  state.allowBlankKey = null;
+  state.blankGuardKey = null;
   renderLoadGuardBanner();
+  renderBlankGuardBanner();
+  renderDraftBanner(null);
+  setSaveStatus("idle");
 
   if(!getTeacherId() || !state.className) return null;
 
   try {
     const payload = await loadFromBackend(key);
     state.loadedKey = key;
+    state.serverSnapshot = payload || null;
+    offerDraftIfAny();
     return payload;
   } catch (err) {
     state.loadFailed = true;
@@ -1396,6 +1408,23 @@ function renderDraftBanner(rascunho){
     renderDraftBanner(null);
   });
   el.appendChild(jogarFora);
+}
+
+// Sobrou rascunho local desta semana? Entao alguma gravacao nao foi confirmada
+// pelo servidor. Nunca aplica sozinho - oferece, porque o rascunho pode ser
+// mais velho do que o que outra pessoa gravou no meio tempo.
+function offerDraftIfAny(){
+  const rascunho = readDraftLocally();
+  if(!rascunho || !rascunho.payload){ renderDraftBanner(null); return; }
+
+  const doServidor = JSON.stringify((state.serverSnapshot && state.serverSnapshot.rows) || []);
+  const doRascunho = JSON.stringify(rascunho.payload.rows || []);
+  if(doServidor === doRascunho){
+    clearDraftLocally();      // igual ao servidor: nao ha o que recuperar
+    renderDraftBanner(null);
+    return;
+  }
+  renderDraftBanner(rascunho);
 }
 
 // Faixa fixa no topo avisando que a edição está travada. Sem isso a professora
@@ -1705,7 +1734,7 @@ async function init(){
 
   const saveBtn = document.getElementById("saveBtn");
   if(saveBtn && !state.isViewMode){
-    saveBtn.addEventListener("click", saveToBackend);
+    saveBtn.addEventListener("click", () => saveToBackend());
   }
 
   await loadWeekIntoState();
