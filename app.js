@@ -1227,10 +1227,10 @@ function renderLoadGuardBanner(){
 }
 
 
-function saveToBackend(options = {}) {
+async function saveToBackend(options = {}) {
   if(!getTeacherId() || !state.className){
     if(!options.silent) toast("Link do professor inválido.");
-    return Promise.resolve();
+    return;
   }
 
   // NUNCA gravar uma semana que não foi lida do servidor: o que está na tela
@@ -1238,64 +1238,89 @@ function saveToBackend(options = {}) {
   if(state.loadedKey !== makeKey()){
     console.warn("saveToBackend bloqueado: semana não carregada do servidor.", makeKey());
     if(!options.silent) toast("Ainda não consegui carregar esta semana. Não vou salvar para não apagar o que já está lá.");
-    return Promise.resolve();
+    return;
   }
 
-  const payload = {
-    key: makeKey(),
-    teacherId: getTeacherId(),
-    payload: buildLessonPayload(),
-  };
+  const key = makeKey();
+  const corpo = buildLessonPayload();
 
-  // Cross-origin POST via hidden iframe avoids CORS, and avoids URL-length limits.
+  // Segunda guarda: a tela está vazia mas o servidor tem conteúdo. Em vez de
+  // gravar (o acidente) ou recusar calado (o que atrapalha quem quer mesmo
+  // limpar), pergunta.
+  if(isBlankPayload(corpo) && !isBlankPayload(state.serverSnapshot) && state.allowBlankKey !== key){
+    state.blankGuardKey = key;
+    renderBlankGuardBanner();
+    setSaveStatus("blocked");
+    return;
+  }
+
+  saveDraftLocally();          // o rascunho vai pro disco ANTES de depender da rede
+  setSaveStatus("saving");
+
   try {
-    const iframeName = "gas_save_iframe";
-    let iframe = document.getElementById(iframeName);
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = iframeName;
-      iframe.name = iframeName;
-      iframe.style.display = "none";
-      document.body.appendChild(iframe);
-    }
+    // POST urlencoded: é "simple request", não dispara preflight, e o Apps
+    // Script preenche e.parameter normalmente. O importante é que agora dá pra
+    // LER a resposta — antes isso ia num iframe cego e a tela dizia "Salvo."
+    // sem o servidor ter respondido nada.
+    const resposta = await fetch(GAS_URL, {
+      method: "POST",
+      body: new URLSearchParams({
+        action: "save",
+        data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
+        ts: String(Date.now()),
+      }),
+    });
+    if(!resposta.ok) throw new Error("o servidor respondeu HTTP " + resposta.status);
 
-    const form = document.createElement("form");
-    form.style.display = "none";
-    form.method = "POST";
-    form.action = GAS_URL;
-    form.target = iframeName;
+    let saida = null;
+    try { saida = await resposta.json(); }
+    catch(_) { throw new Error("resposta ilegível do servidor"); }
 
-    const inAction = document.createElement("input");
-    inAction.type = "hidden";
-    inAction.name = "action";
-    inAction.value = "save";
+    if(!saida || saida.ok !== true) throw new Error((saida && saida.error) || "o servidor recusou a gravação");
 
-    const inData = document.createElement("input");
-    inData.type = "hidden";
-    inData.name = "data";
-    inData.value = JSON.stringify(payload || {});
-
-    const inTs = document.createElement("input");
-    inTs.type = "hidden";
-    inTs.name = "ts";
-    inTs.value = String(Date.now());
-
-    form.appendChild(inAction);
-    form.appendChild(inData);
-    form.appendChild(inTs);
-
-    document.body.appendChild(form);
-    form.submit();
-
-    setTimeout(() => {
-      try { form.remove(); } catch (_) {}
-    }, 0);
-
-    if(!options.silent) toast("Salvo.");
+    state.serverSnapshot = corpo;
+    state.allowBlankKey = null;
+    clearDraftLocally();
+    setSaveStatus("saved");
   } catch (err) {
-    console.warn("saveToBackend failed:", err);
-    if(!options.silent) toast("Erro ao salvar.");
+    // O rascunho local continua guardado de propósito — é o que ela digitou.
+    console.error("saveToBackend falhou:", err);
+    setSaveStatus("error", err && err.message ? err.message : String(err));
   }
+}
+
+// Espelho da checagem que existe no backend. "Vazio" olha só os campos de
+// conteúdo: unitDay não conta, porque o template em branco já nasce com
+// "BÍLINGUE" preenchido e passaria batido.
+function isBlankPayload(corpo){
+  const linhas = (corpo && corpo.rows) || [];
+  const campos = [
+    "conteudo","desenvolvimento","materiais","tarefas",
+    "pppPresentation","pppPractice","pppProduction",
+    "skillListening","skillWriting","skillReading","skillSpeaking"
+  ];
+  for(const linha of linhas){
+    for(const campo of campos){
+      if(semHtml(linha[campo]) !== "") return false;
+    }
+    const obs = linha.observations || {};
+    for(const id in obs){ if(semHtml(obs[id]) !== "") return false; }
+  }
+  return semHtml(corpo && corpo.coordMessage) === "";
+}
+
+function semHtml(valor){
+  return String(valor == null ? "" : valor)
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function contarAulas(corpo){
+  const campos = ["conteudo","desenvolvimento","materiais","tarefas"];
+  return ((corpo && corpo.rows) || [])
+    .filter((linha) => campos.some((campo) => semHtml(linha[campo]) !== "")).length;
 }
 
 
