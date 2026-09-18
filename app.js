@@ -67,6 +67,15 @@ const state = {
   // do planejamento real — foi o que apagou a semana de 14/09 da Raquel.
   loadedKey: null,
   loadFailed: false,
+  // Retrato do que o servidor devolveu na ultima leitura bem-sucedida. Serve
+  // pra saber se a tela ficou vazia em cima de uma semana que TEM conteudo.
+  serverSnapshot: null,
+  // Chave para a qual a professora ja confirmou "sim, quero apagar mesmo".
+  allowBlankKey: null,
+  blankGuardKey: null,
+  saveStatus: "idle",
+  saveDetail: "",
+  savedAt: null,
 };
 
 const GENERAL_ROWS_PER_DAY = 6;
@@ -1190,6 +1199,203 @@ async function loadWeekIntoState(){
   } finally {
     renderLoadGuardBanner();
   }
+}
+
+/* =========================
+   RASCUNHO LOCAL
+   O que ela digita vai pro localStorage a cada pausa, antes e independente da
+   rede. E o que sobra se o wifi cair, a aba fechar ou a luz acabar. So e
+   apagado quando o SERVIDOR confirma a gravacao.
+========================= */
+let draftTimer = null;
+
+function draftStorageKey(){
+  return "lessonPrep:draft:" + getTeacherId() + ":" + makeKey();
+}
+
+function scheduleDraft(){
+  if(draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => { draftTimer = null; saveDraftLocally(); }, 400);
+}
+
+function saveDraftLocally(){
+  // So guarda rascunho de semana que a gente sabe ter lido do servidor. Se a
+  // leitura falhou, a tela e o template em branco - guardar isso criaria um
+  // rascunho envenenado, que depois seria oferecido como "recuperar".
+  if(state.loadedKey !== makeKey()) return;
+  try{
+    localStorage.setItem(draftStorageKey(), JSON.stringify({
+      at: Date.now(),
+      payload: buildLessonPayload(),
+    }));
+  }catch(_){ /* cota cheia / modo privado: segue sem rascunho */ }
+}
+
+function clearDraftLocally(){
+  try{ localStorage.removeItem(draftStorageKey()); }catch(_){}
+}
+
+function readDraftLocally(){
+  try{
+    const bruto = localStorage.getItem(draftStorageKey());
+    return bruto ? JSON.parse(bruto) : null;
+  }catch(_){ return null; }
+}
+
+/* =========================
+   INDICADOR DE GRAVACAO
+   Antes a tela dizia "Salvo." assim que o formulario era enviado, sem esperar
+   resposta nenhuma. Agora ela so diz "Salvo" quando o servidor confirmou, e
+   diz em vermelho quando nao salvou.
+========================= */
+function setSaveStatus(status, detalhe){
+  state.saveStatus = status;
+  state.saveDetail = detalhe || "";
+  if(status === "saved") state.savedAt = new Date();
+  renderSaveStatus();
+}
+
+function renderSaveStatus(){
+  if(state.isViewMode) return;
+  const id = "saveStatusBox";
+  let el = document.getElementById(id);
+  if(!el){
+    el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = [
+      "position:fixed","right:14px","bottom:14px","z-index:99997",
+      "padding:10px 14px","border-radius:12px","font-weight:800",
+      "max-width:min(420px,90vw)","box-shadow:0 8px 20px rgba(0,0,0,.2)",
+      "font-size:14px","line-height:1.35"
+    ].join(";");
+    document.body.appendChild(el);
+  }
+
+  const dois = (n) => String(n).padStart(2, "0");
+  const hora = state.savedAt ? dois(state.savedAt.getHours()) + ":" + dois(state.savedAt.getMinutes()) : "";
+  const estilos = {
+    idle:    ["#eef0f3", "#333", ""],
+    saving:  ["#e7eefc", "#123", "Salvando\u2026"],
+    saved:   ["#1d6f42", "#fff", "Salvo \u00e0s " + hora],
+    blocked: ["#8a5a00", "#fff", "N\u00e3o gravei \u2014 confira o aviso no topo da tela"],
+    error:   ["#b3261e", "#fff", "N\u00c3O SALVOU: " + state.saveDetail + ". O que voc\u00ea escreveu est\u00e1 guardado neste navegador \u2014 n\u00e3o feche a p\u00e1gina."],
+  };
+  const conf = estilos[state.saveStatus] || estilos.idle;
+  if(!conf[2]){ el.remove(); return; }
+
+  el.style.background = conf[0];
+  el.style.color = conf[1];
+  el.innerHTML = "";
+  el.appendChild(document.createTextNode(conf[2]));
+
+  if(state.saveStatus === "error"){
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Tentar de novo";
+    btn.style.cssText = "margin-left:10px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+    btn.addEventListener("click", () => { saveToBackend(); });
+    el.appendChild(btn);
+  }
+}
+
+/* =========================
+   FAIXA: semana vazia sobre conteudo
+========================= */
+function renderBlankGuardBanner(){
+  const id = "blankGuardBanner";
+  let el = document.getElementById(id);
+  if(!state.blankGuardKey){ if(el) el.remove(); return; }
+
+  if(!el){
+    el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = [
+      "position:fixed","top:0","left:0","right:0","z-index:99998",
+      "background:#8a5a00","color:#fff","padding:12px 16px",
+      "font-weight:800","text-align:center","box-shadow:0 4px 14px rgba(0,0,0,.25)"
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "";
+
+  const n = contarAulas(state.serverSnapshot);
+  el.appendChild(document.createTextNode(
+    "Esta semana tem " + n + (n === 1 ? " aula preenchida" : " aulas preenchidas") +
+    " no servidor, e o que est\u00e1 na tela est\u00e1 vazio. N\u00c3O gravei. "
+  ));
+
+  const apagar = document.createElement("button");
+  apagar.type = "button";
+  apagar.textContent = "Sim, quero apagar";
+  apagar.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  apagar.addEventListener("click", () => {
+    state.allowBlankKey = state.blankGuardKey;
+    state.blankGuardKey = null;
+    renderBlankGuardBanner();
+    saveToBackend();
+  });
+  el.appendChild(apagar);
+
+  const voltar = document.createElement("button");
+  voltar.type = "button";
+  voltar.textContent = "Recarregar do servidor";
+  voltar.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  voltar.addEventListener("click", () => {
+    state.blankGuardKey = null;
+    renderBlankGuardBanner();
+    loadWeekIntoState();
+  });
+  el.appendChild(voltar);
+}
+
+/* =========================
+   FAIXA: rascunho nao enviado
+========================= */
+function renderDraftBanner(rascunho){
+  const id = "draftBanner";
+  let el = document.getElementById(id);
+  if(!rascunho){ if(el) el.remove(); return; }
+
+  if(!el){
+    el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = [
+      "position:fixed","top:0","left:0","right:0","z-index:99996",
+      "background:#123a6b","color:#fff","padding:12px 16px",
+      "font-weight:800","text-align:center","box-shadow:0 4px 14px rgba(0,0,0,.25)"
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "";
+
+  const dois = (n) => String(n).padStart(2, "0");
+  const quando = new Date(rascunho.at);
+  el.appendChild(document.createTextNode(
+    "Encontrei altera\u00e7\u00f5es desta semana que n\u00e3o chegaram ao servidor (de " +
+    dois(quando.getDate()) + "/" + dois(quando.getMonth() + 1) + " \u00e0s " +
+    dois(quando.getHours()) + ":" + dois(quando.getMinutes()) + "). "
+  ));
+
+  const usar = document.createElement("button");
+  usar.type = "button";
+  usar.textContent = "Recuperar";
+  usar.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  usar.addEventListener("click", () => {
+    applyLessonPayload(rascunho.payload);
+    renderDraftBanner(null);
+    saveToBackend();
+  });
+  el.appendChild(usar);
+
+  const jogarFora = document.createElement("button");
+  jogarFora.type = "button";
+  jogarFora.textContent = "Descartar";
+  jogarFora.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  jogarFora.addEventListener("click", () => {
+    clearDraftLocally();
+    renderDraftBanner(null);
+  });
+  el.appendChild(jogarFora);
 }
 
 // Faixa fixa no topo avisando que a edição está travada. Sem isso a professora
