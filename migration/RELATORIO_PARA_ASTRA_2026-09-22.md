@@ -16,7 +16,7 @@ Este documento é o que ficou **depois** daquela correção.
 | O quê | Valor |
 |---|---|
 | **Apps Script ID** | `18sfeb7VW7WKl3hB7a6m4Ie3Zf1727PrhPVND6Zndo0ASwoTFfym6nhpu` |
-| **Implantação em produção** | `AKfycbwKhONeOMgPsqNVT48BhjDhwouS5OCAgIUCqOSH-PTA1vElcFitcA9mcwZa8m-gg4vHtQ` — hoje na **v11** |
+| **Implantação em produção** | `AKfycbwKhONeOMgPsqNVT48BhjDhwouS5OCAgIUCqOSH-PTA1vElcFitcA9mcwZa8m-gg4vHtQ` — hoje na **v12** |
 | **URL `/exec`** | `https://script.google.com/macros/s/AKfycbwKhONeOMgPsqNVT48BhjDhwouS5OCAgIUCqOSH-PTA1vElcFitcA9mcwZa8m-gg4vHtQ/exec` |
 | **Front-end em produção** | `https://iapetec.github.io/planejamento/` (GitHub Pages, branch `main`, raiz) |
 | **Repositório** | `iapeTEC/planejamento` — **público** |
@@ -155,7 +155,7 @@ gravou, e a resposta veio como erro.
 A explicação que bate com os sintomas é o redirect do `/exec` sendo reentrado
 como **GET sem parâmetros**, caindo no `doGet` — que lança exatamente essa
 mensagem para ação desconhecida. **Não consegui provar esse caminho**, e sem os
-logos de execução (3.2) não dá para ir além.
+logs de execução (3.2) não dá para ir além.
 
 Mitigado no cliente: antes de mostrar "NÃO SALVOU", o `app.js` lê a semana de
 volta e compara as linhas; se o servidor tem o que foi escrito, considera
