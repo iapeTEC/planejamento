@@ -1106,7 +1106,9 @@ function applyLessonPayload(payload){
   if(!payload) return;
 
   state.term = payload.term || state.term;
-  state.className = payload.className || state.className;
+  if(!state.className && payload.className){
+    state.className = payload.className;
+  }
   state.teacherId = payload.teacherId || payload.teacherEmail || state.teacherId;
   state.teacherEmail = state.teacherId;
   state.isEnglishTeacher = Boolean(state.isEnglishTeacher);
@@ -1126,11 +1128,9 @@ function applyLessonPayload(payload){
 // callback nunca e chamado, o onerror NAO dispara, e a promise fica pendurada
 // para sempre.
 //
-// Era isso que travava o init() no `await loadCurrentTeacher()`: a pagina
-// ficava com o template em branco na tela, sem erro nenhum, e um blur bastava
-// pra gravar esse branco por cima do planejamento. O timeout abaixo transforma
-// "pendurado pra sempre e calado" em "erro visivel".
-const API_TIMEOUT_MS = 10000;
+// O timeout abaixo transforma "pendurado pra sempre e calado" em "erro visivel".
+// Usamos 45s porque o Apps Script em frio frequentemente leva 15s a 35s.
+const API_TIMEOUT_MS = 45000;
 const API_TENTATIVAS = 3;
 
 function esperar(ms){
@@ -1700,7 +1700,17 @@ function renderLoadGuardBanner(){
 }
 
 
+let saveQueue = Promise.resolve();
+
 async function saveToBackend(options = {}) {
+  // Enfileira chamadas para evitar concorrência e sobrecarga no Apps Script
+  const executar = () => doSaveToBackend(options);
+  const promessa = saveQueue.then(executar, executar);
+  saveQueue = promessa.catch(() => {});
+  return promessa;
+}
+
+async function doSaveToBackend(options = {}) {
   if(!getTeacherId() || !state.className){
     if(!options.silent) toast("Link do professor inválido.");
     return;
@@ -1746,19 +1756,29 @@ async function saveToBackend(options = {}) {
     // O Apps Script falha de forma intermitente sob rajada (medido: a mesma
     // leitura levando 3s numa hora e estourando 40s na seguinte). Uma falha
     // isolada nao pode virar "NAO SALVOU" na cara da professora.
+    const saveUrl = GAS_URL + (GAS_URL.includes("?") ? "&" : "?") + "action=save";
     let saida = null;
     let ultimoErro = null;
     for(let tentativa = 0; tentativa < 3; tentativa++){
       if(tentativa > 0) await esperar(1000 * Math.pow(2, tentativa - 1));
       try {
-        const resposta = await fetch(GAS_URL, {
-          method: "POST",
-          body: new URLSearchParams({
-            action: "save",
-            data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
-            ts: String(Date.now()),
-          }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        let resposta;
+        try {
+          resposta = await fetch(saveUrl, {
+            method: "POST",
+            signal: controller.signal,
+            body: new URLSearchParams({
+              action: "save",
+              data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
+              ts: String(Date.now()),
+            }),
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
         if(!resposta.ok) throw new Error("o servidor respondeu HTTP " + resposta.status);
         try { saida = await resposta.json(); }
         catch(_) { throw new Error("resposta ilegível do servidor"); }
@@ -2003,9 +2023,6 @@ async function init(){
   initToolbar();
   initToolbarAutoHide();
 
-  await loadCalendarEvents();
-  startCalendarAutoRefresh();
-
   if(getTeacherId()) {
     try{
       await loadCurrentTeacher();
@@ -2038,6 +2055,11 @@ async function init(){
   }
 
   await loadWeekIntoState();
+
+  // Carrega calendário em segundo plano para não competir com a carga do professor/semana
+  loadCalendarEvents()
+    .then(() => startCalendarAutoRefresh())
+    .catch((err) => console.warn("loadCalendarEvents falhou:", err));
 }
 
 init();

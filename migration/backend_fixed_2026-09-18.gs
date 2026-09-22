@@ -76,8 +76,38 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const action = param(e, "action");
-    const data = JSON.parse(param(e, "data") || "{}");
+    let action = param(e, "action");
+    let rawData = param(e, "data");
+
+    // Se o proxy do Google Apps Script não preencheu e.parameter a partir do corpo,
+    // extrai diretamente de e.postData.contents (suporta JSON ou urlencoded).
+    if (e && e.postData && e.postData.contents) {
+      const contents = e.postData.contents;
+      if (contents.trim().startsWith("{") && contents.trim().endsWith("}")) {
+        try {
+          const bodyJson = JSON.parse(contents);
+          if (!action && bodyJson.action) action = bodyJson.action;
+          if (!rawData && bodyJson.data) {
+            rawData = typeof bodyJson.data === "string" ? bodyJson.data : JSON.stringify(bodyJson.data);
+          }
+        } catch (_) {}
+      } else {
+        try {
+          const parts = contents.split("&");
+          for (let i = 0; i < parts.length; i++) {
+            const pair = parts[i].split("=");
+            if (pair.length >= 1) {
+              const k = decodeURIComponent(pair[0].replace(/\+/g, " "));
+              const v = decodeURIComponent((pair.slice(1).join("=") || "").replace(/\+/g, " "));
+              if (!action && k === "action") action = v;
+              if (!rawData && k === "data") rawData = v;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    const data = JSON.parse(rawData || "{}");
 
     if (action === "save") {
       saveLesson_(data);
@@ -465,7 +495,9 @@ function findTeacher_(teacherId) {
   const rows = teachersSheet_().getDataRange().getValues();
   const normalized = normalizeId_(teacherId);
   for (let i = 1; i < rows.length; i++) {
-    if (normalizeId_(rows[i][0]) === normalized) return teacherToObject_(rows[i]);
+    if (normalizeId_(rows[i][0]) === normalized || normalizeId_(rows[i][1]) === normalized) {
+      return teacherToObject_(rows[i]);
+    }
   }
   return null;
 }
