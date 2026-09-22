@@ -8,7 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8").replace(/\r\n/g, '\n');
 
 // Recorta lerArquivoImportado do app.js e roda com um makeKey() de mentira,
 // para simular "a professora esta nesta semana/turma agora".

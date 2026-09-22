@@ -8,8 +8,9 @@
 // ao lado deste). Sem o snapshot, a parte que depende dele e pulada.
 
 const fs = require("fs"), zlib = require("zlib");
-const RAIZ = "C:\\Users\\dell2\\Documents\\dev\\iape-planejamento";
-const src = fs.readFileSync(RAIZ + "\\app.js", "utf8");
+const path = require('path');
+const RAIZ = path.resolve(__dirname, '..');
+const src = fs.readFileSync(path.join(RAIZ, 'app.js'), "utf8").replace(/\r\n/g, '\n');
 
 // extrai as tres funcoes puras do app.js e roda de verdade
 let code = "";
@@ -21,9 +22,10 @@ for (const nome of ["isBlankPayload", "semHtml", "contarAulas"]) {
 }
 const api = eval("(function(){" + code + "return {isBlankPayload, contarAulas};})()");
 
-const snap = JSON.parse(fs.readFileSync(
-  "C:\\Users\\dell2\\Documents\\dev\\planejamento-migration-private\\source-export-2026-09-03.json", "utf8")).payload;
-const por = (tid) => Object.fromEntries(snap.lessonsByTeacher[tid].map(r => [r.key, JSON.parse(r.json)]));
+const snapPath = process.env.LESSON_SNAPSHOT || path.resolve(RAIZ, '..', 'planejamento-migration-private', 'source-export-2026-09-03.json');
+const snap = fs.existsSync(snapPath) ? JSON.parse(fs.readFileSync(snapPath, 'utf8')).payload : {lessonsByTeacher: {}};
+const hasSnapshot = Object.keys(snap.lessonsByTeacher).length > 0;
+const por = (tid) => Object.fromEntries((snap.lessonsByTeacher[tid] || []).map(r => [r.key, JSON.parse(r.json)]));
 const raquel = por("prof-txf2grnxgpyxtr");
 const soraia = por("prof-l7f85t4igq05d9");
 
@@ -34,12 +36,15 @@ const checa = (cond, nome, extra) => {
 };
 
 console.log("--- isBlankPayload (true = vazio, bloqueia a gravacao) ---");
-let r = api.isBlankPayload(raquel["2026-09-14_infantil_4"]);
+let r;
+if(hasSnapshot){
+r = api.isBlankPayload(raquel["2026-09-14_infantil_4"]);
 checa(r === false, "Raquel 14/09, tem 1 aula: NAO pode ser considerada vazia", r);
 r = api.isBlankPayload(raquel["2026-06-15_infantil_4"]);
 checa(r === true, "Raquel 15/06, realmente vazia", r);
 r = api.isBlankPayload(soraia["2026-08-03_3_ano"]);
 checa(r === false, "Soraia 03/08, 22 aulas", r);
+}
 
 // o template exato que causou o acidente: unitDay preenchido, conteudo zero
 const acidente = { rows: [{ unitDay: "B\u00cdLINGUE", conteudo: "", desenvolvimento: "", materiais: "", tarefas: "" }], coordMessage: "" };
@@ -50,10 +55,13 @@ checa(r === true, "template do acidente (unitDay cheio, conteudo zero)", r);
 r = api.isBlankPayload({ rows: [{ conteudo: "<div><br></div>", desenvolvimento: "&nbsp; " }], coordMessage: "" });
 checa(r === true, "html vazio disfarcado (<div><br></div>, &nbsp;)", r);
 
-const n = api.contarAulas(soraia["2026-08-03_3_ano"]);
-checa(n === 22, "contarAulas(Soraia 03/08) = 22", n);
+if(hasSnapshot){
+  const n = api.contarAulas(soraia["2026-08-03_3_ano"]);
+  checa(n === 22, "contarAulas(Soraia 03/08) = 22", n);
+}
 
-console.log("\n--- gzip: ida e volta byte a byte, nas 125 semanas reais ---");
+if(hasSnapshot){
+console.log("\n--- gzip: ida e volta byte a byte, nas semanas reais ---");
 let piorAntes = 0, piorDepois = 0, falhas = 0;
 for (const linhas of Object.values(snap.lessonsByTeacher)) {
   for (const l of linhas) {
@@ -69,6 +77,9 @@ checa(falhas === 0, "round-trip identico em todas as semanas", falhas + " difere
 console.log("  maior celula: " + piorAntes + " -> " + piorDepois +
   "  (" + (100 * piorAntes / 50000).toFixed(1) + "% -> " + (100 * piorDepois / 50000).toFixed(1) + "% do limite)");
 checa(piorDepois < 50000 * 0.5, "maior celula fica abaixo de 50% do limite");
+}else{
+  console.log('Snapshot privado ausente: verificacoes com dados reais nao executadas.');
+}
 
 console.log("\n" + (ok ? "TODOS OS TESTES PASSARAM" : "*** ALGO FALHOU ***"));
 process.exit(ok ? 0 : 1);

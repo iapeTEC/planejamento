@@ -1,5 +1,5 @@
 const adminConfig = window.LESSON_PREP_CONFIG || {};
-const adminGasUrl = new URLSearchParams(window.location.search).get("gas") || adminConfig.gasUrl || "";
+const adminGasUrl = adminConfig.gasUrl || "";
 const adminGoogleClientId = new URLSearchParams(window.location.search).get("client_id") || adminConfig.googleClientId || "";
 
 const ADMIN_CLASSES = ["Infantil 3", "Infantil 4", "Infantil 5", "1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano"];
@@ -41,6 +41,7 @@ const adminState = {
   calendarEvents: [],
   modalDate: "",
   pendingTeacherId: "",
+  teacherRequestPending: false,
 };
 
 function decodeJwtPayload(token) {
@@ -154,14 +155,20 @@ function apiGet(action, params = {}) {
 
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    let done = false;
+    const cleanup = () => { clearTimeout(timer); delete window[cb]; script.remove(); };
+    const timer = setTimeout(() => {
+      if(done) return;
+      done = true; cleanup(); reject(new Error('O servidor nao respondeu. Tente novamente.'));
+    }, 45000);
     window[cb] = (resp) => {
-      delete window[cb];
-      script.remove();
+      if(done) return;
+      done = true; cleanup();
       resp && resp.ok ? resolve(resp.payload) : reject(new Error(resp?.error || "Erro no backend"));
     };
     script.onerror = () => {
-      delete window[cb];
-      script.remove();
+      if(done) return;
+      done = true; cleanup();
       reject(new Error("Não foi possível acessar o backend."));
     };
     script.src = url.toString();
@@ -169,39 +176,20 @@ function apiGet(action, params = {}) {
   });
 }
 
-function apiPost(action, data) {
-  return new Promise((resolve) => {
-    const iframeName = "admin_save_iframe";
-    let iframe = document.getElementById(iframeName);
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = iframeName;
-      iframe.name = iframeName;
-      iframe.style.display = "none";
-      document.body.appendChild(iframe);
-    }
-
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = adminGasUrl;
-    form.target = iframeName;
-    form.style.display = "none";
-
-    [["action", action], ["idToken", adminState.idToken], ["data", JSON.stringify(data || {})]].forEach(([name, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
-    });
-
-    document.body.appendChild(form);
-    form.submit();
-    setTimeout(() => {
-      form.remove();
-      resolve();
-    }, 500);
-  });
+async function apiPost(action, data) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch(adminGasUrl, {method: 'POST', signal: controller.signal,
+      body: new URLSearchParams({action, idToken: adminState.idToken, data: JSON.stringify(data || {})})});
+    if(!response.ok) throw new Error('Servidor respondeu HTTP ' + response.status);
+    const result = await response.json();
+    if(!result || result.ok !== true) throw new Error(result?.error || 'Gravacao nao confirmada.');
+    return result.payload;
+  } catch(error) {
+    adminToast('Nao foi possivel concluir: ' + error.message);
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 
 function buildTeacherLink(teacher) {
@@ -209,13 +197,12 @@ function buildTeacherLink(teacher) {
   const url = new URL("index.html", window.location.href);
   url.search = "";
   url.searchParams.set("teacherId", teacher.teacherId || teacher.email);
-  if (params.get("gas")) url.searchParams.set("gas", params.get("gas"));
+  url.hash = new URLSearchParams({access: teacher.accessToken || ''}).toString();
   return url.toString();
 }
 
 function newTeacherId() {
-  const random = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-6);
-  return `prof-${random}`;
+  return 'prof-' + crypto.randomUUID().replace(/-/g, '');
 }
 
 function renderClassChecks(selected = []) {
@@ -344,7 +331,8 @@ function selectTeacher(teacher) {
 }
 
 async function loadTeachers() {
-  if (!adminState.idToken) return;
+  if (!adminState.idToken || adminState.teacherRequestPending) return;
+  adminState.teacherRequestPending = true;
   try {
     const wasEditing = Boolean(adminState.editingTeacher);
     const teachers = await apiGet("adminList");
@@ -372,12 +360,14 @@ async function loadTeachers() {
     }
   } catch (err) {
     adminToast(err.message);
+  } finally {
+    adminState.teacherRequestPending = false;
   }
 }
 
 function startTeacherAutoRefresh() {
   if (adminState.teacherRefreshTimer) clearInterval(adminState.teacherRefreshTimer);
-  adminState.teacherRefreshTimer = setInterval(loadTeachers, 10000);
+  adminState.teacherRefreshTimer = setInterval(loadTeachers, 60000);
 }
 
 function setTeacherFormMode(teacher) {
@@ -619,6 +609,7 @@ function initAdmin() {
   });
   document.getElementById("teacherForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
     const payload = readTeacherForm();
     if (!payload.classes.length) {
       adminToast("Selecione ao menos uma turma.");
@@ -636,7 +627,7 @@ function initAdmin() {
       await apiPost("addTeacher", { ...payload, teacherId });
       adminToast("Professor cadastrado.");
     }
-    event.currentTarget.reset();
+    form.reset();
     adminState.selectedTeacher = null;
     setTeacherFormMode(null);
     setTeacherLinkBox(null);

@@ -9,7 +9,7 @@ const PLATFORM_CONFIG = window.LESSON_PREP_CONFIG || {};
 
 // A URL do Apps Script tambem pode vir por ?gas= ou por window.GAS_URL.
 const _qs = new URLSearchParams(window.location.search);
-const GAS_URL = _qs.get("gas") || window.GAS_URL || PLATFORM_CONFIG.gasUrl || API_URL;
+const GAS_URL = PLATFORM_CONFIG.gasUrl || API_URL;
 const GOOGLE_CLIENT_ID = "";
 
 const WEEKDAYS = [
@@ -57,6 +57,8 @@ const state = {
   coordMessage: "",
   isViewMode: document.body.classList.contains("view-mode"),
   idToken: sessionStorage.getItem("lessonPrepIdToken") || "",
+  accessToken: '',
+  readToken: '',
   googleUser: null,
   authReady: false,
   // Guarda contra perda de planejamento: só é seguro gravar uma semana depois
@@ -222,6 +224,7 @@ function isGeneralTeacher(){
 function applyTeacherProfile(profile){
   if(!profile) throw new Error("Perfil do professor não carregado.");
   const teacher = profile.teacher || null;
+  state.readToken = profile.readToken || '';
   if(!teacher) throw new Error("Professor não cadastrado.");
 
   state.teacherEmail = teacher.email || state.teacherEmail;
@@ -945,6 +948,7 @@ async function setClass(newClass){
     return;
   }
 
+  saveDraftLocally();
   state.className = newClass;
 
   const classLabel = document.getElementById("classLabel");
@@ -1106,9 +1110,6 @@ function applyLessonPayload(payload){
   if(!payload) return;
 
   state.term = payload.term || state.term;
-  state.className = payload.className || state.className;
-  state.teacherId = payload.teacherId || payload.teacherEmail || state.teacherId;
-  state.teacherEmail = state.teacherId;
   state.isEnglishTeacher = Boolean(state.isEnglishTeacher);
   state.weekLabel = payload.weekLabel || state.weekLabel;
   state.dateText = payload.dateText || state.dateText;
@@ -1130,8 +1131,15 @@ function applyLessonPayload(payload){
 // ficava com o template em branco na tela, sem erro nenhum, e um blur bastava
 // pra gravar esse branco por cima do planejamento. O timeout abaixo transforma
 // "pendurado pra sempre e calado" em "erro visivel".
-const API_TIMEOUT_MS = 10000;
+const API_TIMEOUT_MS = 45000;
 const API_TENTATIVAS = 3;
+let loadSequence = 0;
+let saveQueue = Promise.resolve();
+const lessonRevisions = new Map();
+let saveContext = null;
+let calendarRequestPending = false;
+
+function lessonIdentity(teacherId, key){ return teacherId + ':' + key; }
 
 function esperar(ms){
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -1144,6 +1152,7 @@ async function apiGet(action, params = {}) {
     try {
       return await apiGetUmaVez(action, params);
     } catch (err) {
+      if(err.noRetry) throw err;
       ultimoErro = err;
       console.warn("apiGet(" + action + ") tentativa " + (tentativa + 1) + " falhou:", err && err.message);
     }
@@ -1157,6 +1166,9 @@ function apiGetUmaVez(action, params) {
   url.searchParams.set("action", action);
   url.searchParams.set("callback", cb);
   url.searchParams.set("ts", Date.now());
+  url.searchParams.set('teacherId', getTeacherId());
+  if(state.accessToken) url.searchParams.set('accessToken', state.accessToken);
+  else if(state.idToken) url.searchParams.set('idToken', state.idToken);
   Object.entries(params).forEach(([key, value]) => {
     if(value !== undefined && value !== null) url.searchParams.set(key, value);
   });
@@ -1177,7 +1189,9 @@ function apiGetUmaVez(action, params) {
       terminou = true;
       cleanup();
       if (resp && resp.ok) return resolve(resp.payload || null);
-      return reject(new Error((resp && resp.error) || "Erro no backend"));
+      const error = new Error((resp && resp.error) || 'Erro no backend');
+      error.noRetry = true;
+      return reject(error);
     };
 
     script.onerror = () => {
@@ -1206,12 +1220,16 @@ async function loadCurrentTeacher(){
 }
 
 async function loadCalendarEvents(){
+  if(calendarRequestPending) return;
+  calendarRequestPending = true;
   try{
     state.calendarEvents = await apiGet("listCalendar") || [];
     hydrateUI();
   }catch(err){
     state.calendarEvents = [];
     toast(err.message || "Erro ao carregar calendário.");
+  }finally{
+    calendarRequestPending = false;
   }
 }
 
@@ -1221,12 +1239,10 @@ function startCalendarAutoRefresh(){
 
 async function loadFromBackend(key) {
   if(!getTeacherId() || !state.className) return null;
-  const payload = await apiGet("get", {
+  return apiGet("getVersioned", {
     key: key || makeKey(),
     teacherId: getTeacherId(),
   });
-  applyLessonPayload(payload || null);
-  return payload || null;
 }
 
 
@@ -1236,10 +1252,14 @@ async function loadFromBackend(key) {
 // isso é sucesso — o que não pode é falha de rede virar "semana em branco
 // salvável".
 async function loadWeekIntoState(){
+  const sequence = ++loadSequence;
   const key = makeKey();
+  const teacherId = getTeacherId();
+  const isCurrent = () => sequence === loadSequence && key === makeKey() && teacherId === getTeacherId();
   state.loadedKey = null;
   state.loadFailed = false;
   state.serverSnapshot = null;
+  state.lastSavedSignature = null;
   state.allowBlankKey = null;
   state.blankGuardKey = null;
   renderLoadGuardBanner();
@@ -1267,20 +1287,28 @@ async function loadWeekIntoState(){
   state.loading = true;
   renderLoadGuardBanner();
   try {
-    const payload = await loadFromBackend(key);
+    const result = await loadFromBackend(key);
+    if(!isCurrent()) return null;
+    if(!result || typeof result.revision !== 'string') throw new Error('Atualize o sistema antes de editar.');
+    const payload = result.lesson;
+    applyLessonPayload(payload);
+    lessonRevisions.set(lessonIdentity(teacherId, key), result.revision);
     state.loadedKey = key;
     state.serverSnapshot = payload || null;
-    state.lastSavedSignature = payload ? JSON.stringify(buildLessonPayload()) : null;
+    state.lastSavedSignature = JSON.stringify(buildLessonPayload());
     offerDraftIfAny();
     return payload;
   } catch (err) {
+    if(!isCurrent()) return null;
     state.loadFailed = true;
     console.error("loadFromBackend falhou para", key, err);
     renderLoadGuardBanner();
     return null;
   } finally {
-    state.loading = false;
-    renderLoadGuardBanner();
+    if(isCurrent()){
+      state.loading = false;
+      renderLoadGuardBanner();
+    }
   }
 }
 
@@ -1327,11 +1355,14 @@ function saveDraftLocally(){
   // So guarda rascunho de semana que a gente sabe ter lido do servidor. Se a
   // leitura falhou, a tela e o template em branco - guardar isso criaria um
   // rascunho envenenado, que depois seria oferecido como "recuperar".
-  if(state.loadedKey !== makeKey()) return;
+  if(state.isViewMode || !state.weekStart || state.loadedKey !== makeKey()) return;
+  const payload = buildLessonPayload();
+  const pending = saveContext && saveContext.identity === lessonIdentity(getTeacherId(), makeKey()) && saveContext.sequence === loadSequence && saveContext.pending > 0;
+  if(!pending && JSON.stringify(payload) === state.lastSavedSignature) return;
   try{
     localStorage.setItem(draftStorageKey(), JSON.stringify({
       at: Date.now(),
-      payload: buildLessonPayload(),
+      payload,
     }));
   }catch(_){ /* cota cheia / modo privado: segue sem rascunho */ }
 }
@@ -1510,8 +1541,8 @@ function offerDraftIfAny(){
   const rascunho = readDraftLocally();
   if(!rascunho || !rascunho.payload){ renderDraftBanner(null); return; }
 
-  const doServidor = JSON.stringify((state.serverSnapshot && state.serverSnapshot.rows) || []);
-  const doRascunho = JSON.stringify(rascunho.payload.rows || []);
+  const doServidor = JSON.stringify(state.serverSnapshot);
+  const doRascunho = JSON.stringify(rascunho.payload);
   if(doServidor === doRascunho){
     clearDraftLocally();      // igual ao servidor: nao ha o que recuperar
     renderDraftBanner(null);
@@ -1573,7 +1604,7 @@ async function lerArquivoImportado(arquivo){
   // Turma ou semana diferente da que esta aberta seria um tiro no pe: o
   // conteudo do arquivo entraria por cima de OUTRA semana. Em vez de deixar,
   // diz exatamente o que abrir antes.
-  if(dados.key && dados.key !== makeKey()){
+  if(!dados.key || dados.key !== makeKey()){
     throw new Error("este arquivo e de " + (dados.turma || "?") + ", semana de " +
       (dados.semana || "?") + ". Abra essa turma e essa semana primeiro, depois importe.");
   }
@@ -1614,6 +1645,11 @@ function renderImportBanner(dados){
   sim.textContent = "Importar";
   sim.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
   sim.addEventListener("click", () => {
+    if(dados.key !== makeKey() || state.loadedKey !== makeKey()){
+      renderImportBanner(null);
+      toast('A semana mudou. Abra a semana do arquivo e importe novamente.');
+      return;
+    }
     applyLessonPayload(dados.payload);
     renderImportBanner(null);
     saveDraftLocally();
@@ -1701,6 +1737,7 @@ function renderLoadGuardBanner(){
 
 
 async function saveToBackend(options = {}) {
+  if(state.isViewMode) return;
   if(!getTeacherId() || !state.className){
     if(!options.silent) toast("Link do professor inválido.");
     return;
@@ -1715,7 +1752,8 @@ async function saveToBackend(options = {}) {
   }
 
   const key = makeKey();
-  const corpo = buildLessonPayload();
+  const teacherId = getTeacherId();
+  const corpo = JSON.parse(JSON.stringify(buildLessonPayload()));
 
   // Segunda guarda: a tela está vazia mas o servidor tem conteúdo. Em vez de
   // gravar (o acidente) ou recusar calado (o que atrapalha quem quer mesmo
@@ -1730,7 +1768,9 @@ async function saveToBackend(options = {}) {
   // Nada mudou desde a ultima gravacao confirmada? Nao torra uma chamada.
   // O blur dispara mesmo quando a professora so passou pelo campo.
   const assinatura = JSON.stringify(corpo);
-  if(!options.forcar && assinatura === state.lastSavedSignature){
+  const identity = lessonIdentity(teacherId, key);
+  const pending = saveContext && saveContext.identity === identity && saveContext.sequence === loadSequence && saveContext.pending > 0;
+  if(!pending && !options.forcar && assinatura === state.lastSavedSignature){
     setSaveStatus("saved");
     return;
   }
@@ -1738,7 +1778,23 @@ async function saveToBackend(options = {}) {
   saveDraftLocally();          // o rascunho vai pro disco ANTES de depender da rede
   setSaveStatus("saving");
 
+  if(!saveContext || saveContext.identity !== identity || saveContext.sequence !== loadSequence){
+    saveContext = {identity, sequence: loadSequence, revision: lessonRevisions.get(identity) || 'absent', conflict: false, pending: 0};
+  }
+  const request = {key, teacherId, corpo, assinatura, context: saveContext, allowBlank: state.allowBlankKey === key,
+    accessToken: state.accessToken, idToken: state.accessToken ? '' : state.idToken};
+  request.context.pending++;
+  const result = saveQueue.then(() => performSave(request)).finally(() => { request.context.pending--; });
+  saveQueue = result.catch(() => {});
+  return result;
+}
+
+async function performSave({key, teacherId, corpo, assinatura, context, allowBlank, accessToken, idToken}){
+  const identity = lessonIdentity(teacherId, key);
+  const current = () => context.sequence === loadSequence && getTeacherId() === teacherId && makeKey() === key && state.loadedKey === key;
+
   try {
+    if(context.conflict) throw new Error('Esta semana mudou em outra aba. Recarregue e confira seu rascunho antes de salvar.');
     // POST urlencoded: é "simple request", não dispara preflight, e o Apps
     // Script preenche e.parameter normalmente. O importante é que agora dá pra
     // LER a resposta — antes isso ia num iframe cego e a tela dizia "Salvo."
@@ -1751,21 +1807,34 @@ async function saveToBackend(options = {}) {
     for(let tentativa = 0; tentativa < 3; tentativa++){
       if(tentativa > 0) await esperar(1000 * Math.pow(2, tentativa - 1));
       try {
-        const resposta = await fetch(GAS_URL, {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        let resposta;
+        try {
+          resposta = await fetch(GAS_URL, {
           method: "POST",
+          signal: controller.signal,
           body: new URLSearchParams({
             action: "save",
-            data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
+            data: JSON.stringify({ key, teacherId, payload: corpo, accessToken, idToken,
+              baseRevision: context.revision, allowBlank }),
             ts: String(Date.now()),
           }),
-        });
+          });
         if(!resposta.ok) throw new Error("o servidor respondeu HTTP " + resposta.status);
         try { saida = await resposta.json(); }
         catch(_) { throw new Error("resposta ilegível do servidor"); }
-        if(!saida || saida.ok !== true) throw new Error((saida && saida.error) || "o servidor recusou a gravação");
+        } finally { clearTimeout(timeout); }
+        if(!saida || saida.ok !== true){
+          const error = new Error((saida && saida.error) || 'o servidor recusou a gravação');
+          error.noRetry = true;
+          if(saida && saida.code === 'CONFLICT') context.conflict = true;
+          throw error;
+        }
         ultimoErro = null;
         break;
       } catch (err) {
+        if(err.noRetry) throw err;
         ultimoErro = err;
         saida = null;
         console.warn("save tentativa " + (tentativa + 1) + " falhou:", err && err.message);
@@ -1773,15 +1842,26 @@ async function saveToBackend(options = {}) {
     }
     if(ultimoErro) throw ultimoErro;
 
-    state.lastSavedSignature = assinatura;
-    state.serverSnapshot = corpo;
-    state.allowBlankKey = null;
-    clearDraftLocally();
-    setSaveStatus("saved");
+    if(!saida.payload || typeof saida.payload.revision !== 'string') throw new Error('Servidor sem confirmação de versão. Atualize o sistema.');
+    context.revision = saida.payload.revision;
+    const storageKey = 'lessonPrep:draft:' + identity;
+    try {
+      const draft = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      if(draft && JSON.stringify(draft.payload) === assinatura) localStorage.removeItem(storageKey);
+    } catch(_) {}
+    if(current()){
+      lessonRevisions.set(identity, saida.payload.revision);
+      state.lastSavedSignature = assinatura;
+      state.serverSnapshot = corpo;
+      state.allowBlankKey = null;
+      const unchanged = JSON.stringify(buildLessonPayload()) === assinatura;
+      if(!unchanged) saveDraftLocally();
+      setSaveStatus(context.pending > 1 ? 'saving' : unchanged ? 'saved' : 'idle');
+    }
   } catch (err) {
     // O rascunho local continua guardado de propósito — é o que ela digitou.
     console.error("saveToBackend falhou:", err);
-    setSaveStatus("error", err && err.message ? err.message : String(err));
+    if(current()) setSaveStatus("error", err && err.message ? err.message : String(err));
   }
 }
 
@@ -1848,6 +1928,7 @@ function hydrateUI(){
 }
 
 async function setWeek(mondayDate){
+  saveDraftLocally();
   state.weekStart = mondayDate;
 
   const mon = new Date(mondayDate);
@@ -1859,6 +1940,7 @@ async function setWeek(mondayDate){
   state.dateText = `${mon.getDate()} a ${fri.getDate()} de ${MONTHS_PT[mon.getMonth()]}`;
 
   state.rows = buildInitialRows(state.weekStart);
+  state.coordMessage = '';
 
   setQueryParams({
     term: state.term,
@@ -1886,7 +1968,9 @@ function initShare(){
       .replace(/\/$/,"/");
 
     const viewLink =
-      `${base}view.html?week=${encodeURIComponent(toISODate(state.weekStart))}&class=${encodeURIComponent(state.className)}&teacherId=${encodeURIComponent(getTeacherId())}`;
+      `${base}view.html?week=${encodeURIComponent(toISODate(state.weekStart))}&class=${encodeURIComponent(state.className)}&teacherId=${encodeURIComponent(getTeacherId())}#access=${encodeURIComponent(state.readToken)}`;
+
+    if(!state.readToken){ toast('Carregue seu cadastro antes de compartilhar.'); return; }
 
     const msg = `Planejamento (somente leitura):\n${viewLink}`;
     const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
@@ -1967,14 +2051,17 @@ function toast(text){
 ========================= */
 async function init(){
   applyQueryState();
+  const tokenKey = 'lessonPrep:access:' + getTeacherId() + ':' + (state.isViewMode ? 'read' : 'edit');
+  state.accessToken = new URLSearchParams(window.location.hash.slice(1)).get('access') || '';
+  try {
+    if(state.accessToken) sessionStorage.setItem(tokenKey, state.accessToken);
+    else state.accessToken = sessionStorage.getItem(tokenKey) || '';
+  } catch(_) {}
   state.loading = true;
   renderLoadGuardBanner();
   initAuth();
   initToolbar();
   initToolbarAutoHide();
-
-  await loadCalendarEvents();
-  startCalendarAutoRefresh();
 
   if(getTeacherId()) {
     try{
@@ -2008,6 +2095,10 @@ async function init(){
   }
 
   await loadWeekIntoState();
+  if(!state.profileFailed && getTeacherId()){
+    await loadCalendarEvents();
+    startCalendarAutoRefresh();
+  }
 }
 
 init();

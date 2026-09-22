@@ -1,0 +1,8 @@
+{
+  "name": "planejamento-legacy",
+  "private": true,
+  "scripts": {
+    "test": "node --test migration/teste_*.js",
+    "build": "node scripts/build-site.mjs"
+  }
+}

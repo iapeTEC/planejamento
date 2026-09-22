@@ -1,5 +1,7 @@
 // ============================================================================
 // backend.gs — VERSÃO CORRIGIDA em 18/09/2026.
+// Revisao de 22/09: acesso autenticado, revisao otimista, auditoria e rotacao.
+// Implantar junto do frontend correspondente; os links antigos sao substituidos.
 //
 // Base: backend_live_2026-09-02.gs (o que estava rodando). Correções feitas
 // depois do incidente em que a semana de 14/09 da professora Raquel foi
@@ -17,6 +19,10 @@
 //   4. saveLesson_ recusa um payload 100% vazio por cima de um planejamento
 //      que tem conteúdo. Rede de segurança — a trava de verdade está no
 //      app.js, que não deixa gravar semana que não foi lida do servidor.
+//   6. 22/09: parou de puxar a coluna `json` inteira a cada leitura/gravação
+//      (era getDataRange().getValues() — megabytes por requisição), e passou a
+//      arquivar no histórico só quando o conteúdo muda de verdade. O endpoint
+//      é instável sob carga; isto reduz o peso de cada chamada.
 //   5. gzip+base64 na célula (18/09, segunda rodada). Uma célula do Sheets
 //      aceita 50.000 caracteres e a semana inteira cabe numa só; 19 das 125
 //      semanas já passavam de 80% do teto e a maior estava em 99,3%. Comprimir
@@ -41,42 +47,157 @@ const CELL_LIMIT = 50000;
 const CALENDAR_SHEET = "CalendarEvents";
 const TEACHERS_HEADERS = ["teacherId", "name", "classes", "spreadsheetId", "active", "createdAt", "isEnglishTeacher"];
 const CALENDAR_HEADERS = ["eventId", "date", "title", "html", "color", "isObservation", "importId", "createdAt"];
+const HISTORY_ACTIVE_LIMIT = 500;
+
+function fail_(message, code) {
+  const error = new Error(message);
+  error.code = code || 'INVALID_REQUEST';
+  throw error;
+}
+
+function loggedAction_(value) {
+  const actions = ['health', 'getTeacher', 'get', 'getVersioned', 'listCalendar', 'me',
+    'adminList', 'diagnostics', 'save', 'addTeacher', 'updateTeacher', 'deleteTeacher',
+    'addCalendarEvent', 'deleteCalendarEvent', 'importCalendarEvents', 'deleteCalendarImport'];
+  return actions.indexOf(value) === -1 ? 'unknown' : value;
+}
+
+function publicError_(error) {
+  return {ok: false, code: error.code || 'SERVER_ERROR',
+    error: error.code ? error.message : 'Falha interna no servidor. Tente novamente.'};
+}
+
+function ensureAccessSecret_() {
+  const properties = PropertiesService.getScriptProperties();
+  if (properties.getProperty('LESSON_ACCESS_SECRET')) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (!properties.getProperty('LESSON_ACCESS_SECRET')) {
+      properties.setProperty('LESSON_ACCESS_SECRET', Utilities.getUuid() + Utilities.getUuid());
+    }
+  } finally { lock.releaseLock(); }
+}
+
+function teacherAccessToken_(teacherId, scope) {
+  const secret = PropertiesService.getScriptProperties().getProperty('LESSON_ACCESS_SECRET');
+  if (!secret) fail_('A coordenacao precisa emitir os novos links de acesso.', 'UNAUTHORIZED');
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(
+    normalizeId_(teacherId) + ':' + scope, secret)).replace(/=+$/, '');
+}
+
+function sameToken_(a, b) {
+  a = String(a || ''); b = String(b || '');
+  let difference = a.length ^ b.length;
+  for (let i = 0; i < b.length; i++) difference |= (a.charCodeAt(i) || 0) ^ b.charCodeAt(i);
+  return difference === 0;
+}
+
+function requireTeacherAccess_(teacherId, credentials, write) {
+  credentials = credentials || {};
+  if (credentials.idToken) {
+    const user = verifyUser_(credentials.idToken);
+    requireAdmin_(user.email);
+    return 'admin:' + user.email;
+  }
+  const token = credentials.accessToken;
+  if (!token) fail_('Abra o link de acesso enviado pela coordenacao.', 'UNAUTHORIZED');
+  const edit = teacherAccessToken_(teacherId, 'edit');
+  if (sameToken_(token, edit)) { requireTeacher_(teacherId); return 'teacher:' + normalizeId_(teacherId); }
+  if (!write && sameToken_(token, teacherAccessToken_(teacherId, 'read'))) {
+    requireTeacher_(teacherId); return 'reader:' + normalizeId_(teacherId);
+  }
+  fail_('Link de acesso invalido ou sem permissao.', 'UNAUTHORIZED');
+}
+
+function revision_(json) {
+  if (!json) return 'absent';
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, json)).replace(/=+$/, '');
+}
+
+function validateLesson_(teacher, key, payload) {
+  const match = /^(\d{4}-\d{2}-\d{2})_([a-z0-9_]+)$/.exec(String(key || ''));
+  if (!match) fail_('Chave do planejamento invalida.');
+  const date = new Date(match[1] + 'T12:00:00Z');
+  if (isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1] || date.getUTCDay() !== 1) {
+    fail_('A semana precisa comecar em uma segunda-feira valida.');
+  }
+  const classes = String(teacher.classes || '').split(/[,;\n]+/).map(function (name) { return name.trim(); });
+  const className = classes.find(function (name) {
+    return name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') === match[2];
+  });
+  if (!className) fail_('Turma nao cadastrada para esta professora.');
+  if (payload !== undefined) {
+    if (!payload || payload.className !== className || payload.weekStart !== match[1] ||
+        !Array.isArray(payload.rows) || payload.rows.some(function (row) { return !row || typeof row !== 'object' || Array.isArray(row); })) {
+      fail_('O conteudo nao corresponde a turma e semana informadas.');
+    }
+    if (normalizeId_(payload.teacherId || payload.teacherEmail) !== teacher.teacherId) fail_('Professora do conteudo invalida.');
+  }
+}
 
 function doGet(e) {
+  const started = Date.now();
   const action = param(e, "action");
   const callback = param(e, "callback");
 
   try {
     let payload;
+    const teacherId = param(e, 'teacherId') || param(e, 'teacherEmail');
+    const credentials = {idToken: param(e, 'idToken'), accessToken: param(e, 'accessToken')};
 
-    if (action === "adminList") {
+    if (action === 'health') {
+      payload = {version: '2026-09-22-secure', authenticationRequired: true};
+    } else if (action === "adminList") {
       requireAdmin_(verifyUser_(param(e, "idToken")).email);
-      payload = listTeachers_();
+      ensureAccessSecret_();
+      payload = listTeachers_().map(function (teacher) {
+        delete teacher.spreadsheetId;
+        teacher.accessToken = teacherAccessToken_(teacher.teacherId, 'edit');
+        teacher.readToken = teacherAccessToken_(teacher.teacherId, 'read');
+        return teacher;
+      });
     } else if (action === "getTeacher") {
-      payload = getTeacherProfile_(param(e, "teacherId") || param(e, "teacherEmail"));
+      requireTeacherAccess_(teacherId, credentials, false);
+      payload = getTeacherProfile_(teacherId);
+    } else if (action === 'getVersioned') {
+      requireTeacherAccess_(teacherId, credentials, false);
+      payload = getLessonVersioned_(teacherId, param(e, 'key'));
     } else if (action === "get") {
-      payload = getLesson_(param(e, "teacherId") || param(e, "teacherEmail"), param(e, "key"));
+      requireTeacherAccess_(teacherId, credentials, false);
+      payload = getLesson_(teacherId, param(e, 'key'));
     } else if (action === "listCalendar") {
+      requireTeacherAccess_(teacherId, credentials, false);
       payload = listCalendarEvents_();
     } else if (action === "me") {
-      payload = getTeacherProfile_(param(e, "teacherId") || param(e, "teacherEmail"));
+      requireTeacherAccess_(teacherId, credentials, false);
+      payload = getTeacherProfile_(teacherId);
+    } else if (action === 'diagnostics') {
+      requireAdmin_(verifyUser_(credentials.idToken).email);
+      payload = diagnoseTeacher_(teacherId);
     } else {
-      throw new Error("Ação desconhecida.");
+      fail_("Ação desconhecida.");
     }
 
     return json_(callback, { ok: true, payload });
   } catch (err) {
-    return json_(callback, { ok: false, error: err.message || String(err) });
+    console.error(JSON.stringify({action: loggedAction_(action), code: err.code || 'SERVER_ERROR'}));
+    return json_(callback, publicError_(err));
+  } finally {
+    console.log(JSON.stringify({method: 'GET', action: loggedAction_(action), elapsedMs: Date.now() - started}));
   }
 }
 
 function doPost(e) {
+  const started = Date.now();
   try {
     const action = param(e, "action");
     const data = JSON.parse(param(e, "data") || "{}");
+    let payload = null;
 
     if (action === "save") {
-      saveLesson_(data);
+      data.idToken = param(e, 'idToken') || data.idToken;
+      payload = saveLesson_(data);
     } else if (action === "addTeacher") {
       requireAdmin_(verifyUser_(param(e, "idToken") || data.idToken).email);
       addTeacher_(data);
@@ -99,21 +220,24 @@ function doPost(e) {
       requireAdmin_(verifyUser_(param(e, "idToken") || data.idToken).email);
       deleteCalendarImport_(data);
     } else {
-      throw new Error("Ação desconhecida.");
+      fail_("Ação desconhecida.");
     }
 
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true }))
+      .createTextOutput(JSON.stringify({ ok: true, payload: payload }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
+    console.error(JSON.stringify({action: loggedAction_(param(e, 'action')), code: err.code || 'SERVER_ERROR'}));
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: false, error: err.message || String(err) }))
+      .createTextOutput(JSON.stringify(publicError_(err)))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    console.log(JSON.stringify({method: 'POST', action: loggedAction_(param(e, 'action')), elapsedMs: Date.now() - started}));
   }
 }
 
 function verifyUser_(idToken) {
-  if (!idToken) throw new Error("Login do Google obrigatório.");
+  if (!idToken) fail_("Login do Google obrigatório.", 'UNAUTHORIZED');
 
   const cache = CacheService.getScriptCache();
   const cacheKey = "token:" + Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken)
@@ -125,11 +249,13 @@ function verifyUser_(idToken) {
   const resp = UrlFetchApp.fetch("https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken), {
     muteHttpExceptions: true,
   });
-  if (resp.getResponseCode() !== 200) throw new Error("Token do Google inválido.");
+  if (resp.getResponseCode() !== 200) fail_("Token do Google inválido.", 'UNAUTHORIZED');
 
   const claims = JSON.parse(resp.getContentText());
-  if (claims.aud !== GOOGLE_CLIENT_ID) throw new Error("Token emitido para outro cliente.");
-  if (claims.email_verified !== "true" && claims.email_verified !== true) throw new Error("Gmail não verificado.");
+  if (claims.aud !== GOOGLE_CLIENT_ID) fail_("Token emitido para outro cliente.", 'UNAUTHORIZED');
+  if (claims.email_verified !== "true" && claims.email_verified !== true) fail_("Gmail não verificado.", 'UNAUTHORIZED');
+  const remainingSeconds = Math.floor(Number(claims.exp) - Date.now() / 1000);
+  if (!isFinite(remainingSeconds) || remainingSeconds <= 0) fail_('Login expirado. Entre novamente.', 'UNAUTHORIZED');
 
   const user = {
     email: normalizeId_(claims.email),
@@ -137,12 +263,12 @@ function verifyUser_(idToken) {
     picture: claims.picture || "",
     sub: claims.sub || "",
   };
-  cache.put(cacheKey, JSON.stringify(user), 300);
+  cache.put(cacheKey, JSON.stringify(user), Math.min(300, remainingSeconds));
   return user;
 }
 
 function requireAdmin_(email) {
-  if (!isAdmin_(email)) throw new Error("Acesso de coordenação obrigatório.");
+  if (!isAdmin_(email)) fail_("Acesso de coordenação obrigatório.", 'UNAUTHORIZED');
 }
 
 function isAdmin_(email) {
@@ -152,20 +278,27 @@ function isAdmin_(email) {
 
 function getTeacherProfile_(teacherId) {
   const teacher = requireTeacher_(teacherId);
-  return { teacher: teacher };
+  delete teacher.spreadsheetId;
+  return { teacher: teacher, readToken: teacherAccessToken_(teacherId, 'read') };
 }
 
 function getLesson_(teacherId, key) {
-  if (!key) throw new Error("Chave do planejamento ausente.");
+  return getLessonVersioned_(teacherId, key).lesson;
+}
+
+function getLessonVersioned_(teacherId, key) {
+  if (!key) fail_("Chave do planejamento ausente.");
 
   const teacher = requireTeacher_(teacherId);
+  validateLesson_(teacher, key);
   const ss = SpreadsheetApp.openById(teacher.spreadsheetId);
-  const sheet = ensureSheet_(ss, LESSONS_SHEET, ["key", "json", "updatedAt", "updatedBy"]);
-  const rows = sheet.getDataRange().getValues();
+  const sheet = ss.getSheetByName(LESSONS_SHEET);
+  if (!sheet) return {lesson: null, revision: 'absent'};
 
-  const index = findLessonRowIndex_(rows, key);
-  if (index === -1) return null;
-  return JSON.parse(decodeLessonJson_(rows[index][1]) || "null");
+  const linha = findLessonRowIndex_(sheet, key);
+  if (linha === -1) return {lesson: null, revision: 'absent'};
+  const json = decodeLessonJson_(sheet.getRange(linha, 2).getValue());
+  return {lesson: JSON.parse(json || 'null'), revision: revision_(json)};
 }
 
 // Uma celula do Google Sheets aceita no maximo 50.000 caracteres, e a semana
@@ -190,66 +323,98 @@ function decodeLessonJson_(valor) {
   return Utilities.ungzip(Utilities.newBlob(bytes, "application/x-gzip")).getDataAsString();
 }
 
+// Devolve o NUMERO DA LINHA na planilha (1-based), ou -1.
+//
 // Com chaves duplicadas na aba (ver item 1 do cabeçalho), a linha boa é a mais
 // recente — não a primeira. Empate de data resolve pela última linha.
-function findLessonRowIndex_(rows, key) {
-  let best = -1;
-  let bestAt = null;
+//
+// Le so as colunas `key` e `updatedAt`. A versao anterior fazia
+// getDataRange().getValues(), o que puxava junto a coluna `json` inteira — nas
+// planilhas maiores sao megabytes transferidos a CADA leitura e a CADA
+// gravacao, e a gravacao dispara em toda saida de campo. Isso pesava em cima de
+// um endpoint que ja e instavel (ver item 3.1 do RELATORIO_PARA_ASTRA).
+function findLessonRowIndex_(sheet, key) {
+  const ultima = sheet.getLastRow();
+  if (ultima < 2) return -1;
 
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] !== key) continue;
-    const at = rows[i][2] instanceof Date ? rows[i][2] : new Date(rows[i][2] || 0);
-    const valid = at && !isNaN(at.getTime());
-    if (best === -1 || !bestAt || (valid && at.getTime() >= bestAt.getTime())) {
-      best = i;
-      bestAt = valid ? at : bestAt;
+  const chaves = sheet.getRange(2, 1, ultima - 1, 1).getValues();
+  const datas = sheet.getRange(2, 3, ultima - 1, 1).getValues();
+
+  let melhor = -1;
+  let melhorEm = null;
+
+  for (let i = 0; i < chaves.length; i++) {
+    if (chaves[i][0] !== key) continue;
+    const at = datas[i][0] instanceof Date ? datas[i][0] : new Date(datas[i][0] || 0);
+    const valida = at && !isNaN(at.getTime());
+    if (melhor === -1 || !melhorEm || (valida && at.getTime() >= melhorEm.getTime())) {
+      melhor = i + 2;   // +1 pelo cabeçalho, +1 porque a planilha é 1-based
+      melhorEm = valida ? at : melhorEm;
     }
   }
-  return best;
+  return melhor;
 }
 
 function saveLesson_(data) {
   const teacherId = normalizeId_(data.teacherId || data.teacherEmail);
-  if (!teacherId) throw new Error("Link do professor inválido.");
-  if (!data.key) throw new Error("Chave do planejamento ausente.");
+  if (!teacherId) fail_("Link do professor inválido.");
+  if (!data.key) fail_("Chave do planejamento ausente.");
+  const actor = requireTeacherAccess_(teacherId, data, true);
 
   const teacher = requireTeacher_(teacherId);
   const payload = data.payload || {};
+  validateLesson_(teacher, data.key, payload);
+  if (typeof data.baseRevision !== 'string') fail_('Recarregue a semana antes de salvar.', 'CONFLICT');
   const json = JSON.stringify(payload);
   const armazenado = encodeLessonJson_(json);
 
   // Estourar o limite da celula fazia o setValues falhar; com o save cego de
   // antes, a professora via "Salvo." mesmo assim. Agora a mensagem chega nela.
   if (armazenado.length > CELL_LIMIT) {
-    throw new Error("Esta semana ficou grande demais para a planilha (" +
+    fail_("Esta semana ficou grande demais para a planilha (" +
       armazenado.length + " de " + CELL_LIMIT + " caracteres). Avise a coordenacao.");
   }
 
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) throw new Error("Servidor ocupado. Tente salvar de novo.");
+  if (!lock.tryLock(20000)) fail_("Servidor ocupado. Tente salvar de novo.", 'BUSY');
 
   try {
     const ss = SpreadsheetApp.openById(teacher.spreadsheetId);
     const sheet = ensureSheet_(ss, LESSONS_SHEET, ["key", "json", "updatedAt", "updatedBy"]);
-    const rows = sheet.getDataRange().getValues();
     const now = new Date();
-    const index = findLessonRowIndex_(rows, data.key);
-
-    if (index === -1) {
-      sheet.appendRow([data.key, armazenado, now, teacherId]);
-      return;
+    const linha = findLessonRowIndex_(sheet, data.key);
+    const anterior = linha === -1 ? '' : String(sheet.getRange(linha, 2).getValue() || '');
+    const previousJson = decodeLessonJson_(anterior);
+    const nextRevision = revision_(json);
+    if (previousJson === json) return {revision: nextRevision};
+    if (revision_(previousJson) !== data.baseRevision) {
+      fail_('Esta semana mudou em outra aba. Recarregue e confira seu rascunho antes de salvar.', 'CONFLICT');
     }
 
-    const previous = String(rows[index][1] || "");
+    if (linha === -1) {
+      sheet.appendRow([data.key, armazenado, now, actor]);
+      auditLesson_(ss, data.key, actor, data.baseRevision, nextRevision);
+      SpreadsheetApp.flush();
+      return {revision: nextRevision};
+    }
 
-    if (isBlankLesson_(payload) && !isBlankLessonJson_(decodeLessonJson_(previous))) {
-      throw new Error("Gravação recusada: o conteúdo enviado está vazio e apagaria o planejamento salvo.");
+    // So esta linha e lida, em vez da coluna inteira.
+
+    // Nada mudou: nao escreve, nao arquiva, nao gasta cota. O autosave dispara
+    // em toda saida de campo, entao isto acontece muito.
+
+    if (data.allowBlank !== true && isBlankLesson_(payload) && !isBlankLessonJson_(previousJson)) {
+      fail_("Gravação recusada: o conteúdo enviado está vazio e apagaria o planejamento salvo.");
     }
 
     // O historico guarda a celula exatamente como estava (comprimida ou nao),
     // pra nao gastar tempo de script re-codificando o que ja esta pronto.
-    archiveLesson_(ss, data.key, previous, rows[index][2], rows[index][3]);
-    sheet.getRange(index + 1, 2, 1, 3).setValues([[armazenado, now, teacherId]]);
+    const meta = sheet.getRange(linha, 3, 1, 2).getValues()[0];
+    archiveLesson_(ss, data.key, anterior, meta[0], meta[1]);
+    sheet.getRange(linha, 2, 1, 3).setValues([[armazenado, now, actor]]);
+    auditLesson_(ss, data.key, actor, data.baseRevision, nextRevision);
+    SpreadsheetApp.flush();
+    return {revision: nextRevision};
   } finally {
     lock.releaseLock();
   }
@@ -298,18 +463,53 @@ function stripHtml_(value) {
 // Guarda a versão anterior antes de sobrescrever.
 function archiveLesson_(ss, key, previousJson, previousUpdatedAt, previousUpdatedBy) {
   if (!previousJson) return;
-  const sheet = ensureSheet_(ss, LESSONS_HISTORY_SHEET, ["key", "json", "updatedAt", "updatedBy", "archivedAt"]);
+  const sheet = rotatingSheet_(ss, LESSONS_HISTORY_SHEET, ["key", "json", "updatedAt", "updatedBy", "archivedAt"]);
   sheet.appendRow([key, previousJson, previousUpdatedAt || "", previousUpdatedBy || "", new Date()]);
+}
+
+function rotatingSheet_(ss, name, headers) {
+  let sheet = ensureSheet_(ss, name, headers);
+  if (sheet.getLastRow() > HISTORY_ACTIVE_LIMIT) {
+    sheet.setName(name + '_' + Date.now() + '_' + Utilities.getUuid().slice(0, 8));
+    sheet = ensureSheet_(ss, name, headers);
+  }
+  return sheet;
+}
+
+function auditLesson_(ss, key, actor, previousRevision, nextRevision) {
+  rotatingSheet_(ss, 'AuditLog', ['at', 'actor', 'action', 'key', 'previousRevision', 'revision'])
+    .appendRow([new Date(), actor, 'save', key, previousRevision, nextRevision]);
+  console.log(JSON.stringify({action: 'save', actor: actor, key: key, revision: nextRevision}));
+}
+
+function diagnoseTeacher_(teacherId) {
+  const started = Date.now();
+  const teacher = requireTeacher_(teacherId);
+  const ss = SpreadsheetApp.openById(teacher.spreadsheetId);
+  const sheet = ss.getSheetByName(LESSONS_SHEET);
+  const counts = {};
+  const invalidKeys = [];
+  if (sheet && sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function (row) {
+      const key = String(row[0]); counts[key] = (counts[key] || 0) + 1;
+      try { validateLesson_(teacher, key); } catch (_) { invalidKeys.push(key); }
+    });
+  }
+  const history = ss.getSheetByName(LESSONS_HISTORY_SHEET);
+  return {lessonRows: sheet ? sheet.getLastRow() - 1 : 0,
+    activeHistoryRows: history ? history.getLastRow() - 1 : 0,
+    duplicateKeys: Object.keys(counts).filter(function (key) { return counts[key] > 1; }),
+    invalidKeys: invalidKeys, elapsedMs: Date.now() - started};
 }
 
 function addTeacher_(data) {
   const teacherId = normalizeId_(data.teacherId) || uniqueTeacherId_();
-  if (findTeacher_(teacherId)) throw new Error("Link de professor já existe.");
+  if (findTeacher_(teacherId)) fail_("Link de professor já existe.");
   const name = String(data.name || "").trim();
-  if (!name) throw new Error("O nome do professor é obrigatório.");
+  if (!name) fail_("O nome do professor é obrigatório.");
 
   const classes = normalizeClasses_(data.classes);
-  if (!classes) throw new Error("Selecione ao menos uma turma.");
+  if (!classes) fail_("Selecione ao menos uma turma.");
 
   const isEnglishTeacher = data.isEnglishTeacher === true || data.isEnglishTeacher === "true";
   const teacherSs = SpreadsheetApp.create("Planejamento - " + name);
@@ -320,13 +520,13 @@ function addTeacher_(data) {
 
 function updateTeacher_(data) {
   const originalId = normalizeId_(data.originalTeacherId || data.teacherId || data.email);
-  if (!originalId) throw new Error("Professor não informado.");
+  if (!originalId) fail_("Professor não informado.");
 
   const name = String(data.name || "").trim();
-  if (!name) throw new Error("O nome do professor é obrigatório.");
+  if (!name) fail_("O nome do professor é obrigatório.");
 
   const classes = normalizeClasses_(data.classes);
-  if (!classes) throw new Error("Selecione ao menos uma turma.");
+  if (!classes) fail_("Selecione ao menos uma turma.");
 
   const sheet = teachersSheet_();
   const rows = sheet.getDataRange().getValues();
@@ -338,12 +538,12 @@ function updateTeacher_(data) {
       return;
     }
   }
-  throw new Error("Professor não encontrado.");
+  fail_("Professor não encontrado.");
 }
 
 function deleteTeacher_(data) {
   const teacherId = normalizeId_(data.teacherId || data.email);
-  if (!teacherId) throw new Error("Professor não informado.");
+  if (!teacherId) fail_("Professor não informado.");
 
   const sheet = teachersSheet_();
   const rows = sheet.getDataRange().getValues();
@@ -353,7 +553,7 @@ function deleteTeacher_(data) {
       return;
     }
   }
-  throw new Error("Professor não encontrado.");
+  fail_("Professor não encontrado.");
 }
 
 function addCalendarEvent_(data) {
@@ -372,7 +572,7 @@ function addCalendarEvent_(data) {
 
 function deleteCalendarEvent_(data) {
   const eventId = String(data.eventId || "").trim();
-  if (!eventId) throw new Error("Evento não informado.");
+  if (!eventId) fail_("Evento não informado.");
 
   const sheet = calendarSheet_();
   const rows = sheet.getDataRange().getValues();
@@ -386,7 +586,7 @@ function deleteCalendarEvent_(data) {
 
 function importCalendarEvents_(data) {
   const events = parseImportPayload_(data.payload || data.text || "");
-  if (!events.length) throw new Error("Nenhuma data válida encontrada.");
+  if (!events.length) fail_("Nenhuma data válida encontrada.");
 
   const importId = Utilities.getUuid();
   const rows = events.map(function (item) {
@@ -408,7 +608,7 @@ function importCalendarEvents_(data) {
 
 function deleteCalendarImport_(data) {
   const importId = String(data.importId || "").trim();
-  if (!importId) throw new Error("Importação não informada.");
+  if (!importId) fail_("Importação não informada.");
 
   const sheet = calendarSheet_();
   const rows = sheet.getDataRange().getValues();
@@ -418,13 +618,15 @@ function deleteCalendarImport_(data) {
 }
 
 function listTeachers_() {
-  return teachersSheet_().getDataRange().getValues().slice(1)
+  const sheet = teachersSheet_(false);
+  return (sheet ? sheet.getDataRange().getValues().slice(1) : [])
     .filter(function (row) { return row[0]; })
     .map(teacherToObject_);
 }
 
 function listCalendarEvents_() {
-  return calendarSheet_().getDataRange().getValues().slice(1)
+  const sheet = calendarSheet_(false);
+  return (sheet ? sheet.getDataRange().getValues().slice(1) : [])
     .filter(function (row) { return row[0] && row[1]; })
     .map(calendarToObject_)
     .sort(function (a, b) {
@@ -434,13 +636,14 @@ function listCalendarEvents_() {
 
 function requireTeacher_(teacherId) {
   const teacher = findTeacher_(teacherId);
-  if (!teacher || !teacher.active) throw new Error("Professor não cadastrado.");
-  if (!teacher.spreadsheetId) throw new Error("Planilha do professor não encontrada.");
+  if (!teacher || !teacher.active) fail_("Professor não cadastrado.");
+  if (!teacher.spreadsheetId) fail_("Planilha do professor não encontrada.");
   return teacher;
 }
 
 function findTeacher_(teacherId) {
-  const rows = teachersSheet_().getDataRange().getValues();
+  const sheet = teachersSheet_(false);
+  const rows = sheet ? sheet.getDataRange().getValues() : [];
   const normalized = normalizeId_(teacherId);
   for (let i = 1; i < rows.length; i++) {
     if (normalizeId_(rows[i][0]) === normalized) return teacherToObject_(rows[i]);
@@ -448,13 +651,15 @@ function findTeacher_(teacherId) {
   return null;
 }
 
-function teachersSheet_() {
+function teachersSheet_(create) {
   const ss = SpreadsheetApp.openById(CONTROL_SPREADSHEET_ID);
+  if (create === false) return ss.getSheetByName(TEACHERS_SHEET);
   return ensureSheet_(ss, TEACHERS_SHEET, TEACHERS_HEADERS);
 }
 
-function calendarSheet_() {
+function calendarSheet_(create) {
   const ss = SpreadsheetApp.openById(CONTROL_SPREADSHEET_ID);
+  if (create === false) return ss.getSheetByName(CALENDAR_SHEET);
   return ensureSheet_(ss, CALENDAR_SHEET, CALENDAR_HEADERS);
 }
 
@@ -502,10 +707,10 @@ function calendarToObject_(row) {
 
 function normalizeCalendarEvent_(data, importId) {
   const date = String(data.date || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Data inválida: " + date);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail_("Data inválida.");
 
   const title = String(data.title || "").trim();
-  if (!title) throw new Error("Título obrigatório para " + date);
+  if (!title) fail_("Título obrigatório para " + date);
 
   return {
     eventId: String(data.eventId || Utilities.getUuid()),
@@ -526,12 +731,12 @@ function parseImportPayload_(value) {
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    throw new Error("Importação precisa estar em JSON válido.");
+    fail_("Importação precisa estar em JSON válido.");
   }
 
   if (Array.isArray(parsed)) return parsed;
   if (Array.isArray(parsed.events)) return parsed.events;
-  throw new Error("JSON precisa ter um array ou o campo events.");
+  fail_("JSON precisa ter um array ou o campo events.");
 }
 
 function uniqueTeacherId_() {
@@ -573,6 +778,10 @@ function param(e, key) {
 }
 
 function json_(callback, obj) {
+  if (callback && !/^[A-Za-z_$][\w$]*$/.test(callback)) {
+    callback = '';
+    obj = {ok: false, error: 'Callback invalido.', code: 'INVALID_REQUEST'};
+  }
   const body = callback
     ? callback + "(" + JSON.stringify(obj) + ");"
     : JSON.stringify(obj);
