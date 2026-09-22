@@ -17,6 +17,10 @@
 //   4. saveLesson_ recusa um payload 100% vazio por cima de um planejamento
 //      que tem conteúdo. Rede de segurança — a trava de verdade está no
 //      app.js, que não deixa gravar semana que não foi lida do servidor.
+//   6. 22/09: parou de puxar a coluna `json` inteira a cada leitura/gravação
+//      (era getDataRange().getValues() — megabytes por requisição), e passou a
+//      arquivar no histórico só quando o conteúdo muda de verdade. O endpoint
+//      é instável sob carga; isto reduz o peso de cada chamada.
 //   5. gzip+base64 na célula (18/09, segunda rodada). Uma célula do Sheets
 //      aceita 50.000 caracteres e a semana inteira cabe numa só; 19 das 125
 //      semanas já passavam de 80% do teto e a maior estava em 99,3%. Comprimir
@@ -161,11 +165,10 @@ function getLesson_(teacherId, key) {
   const teacher = requireTeacher_(teacherId);
   const ss = SpreadsheetApp.openById(teacher.spreadsheetId);
   const sheet = ensureSheet_(ss, LESSONS_SHEET, ["key", "json", "updatedAt", "updatedBy"]);
-  const rows = sheet.getDataRange().getValues();
 
-  const index = findLessonRowIndex_(rows, key);
-  if (index === -1) return null;
-  return JSON.parse(decodeLessonJson_(rows[index][1]) || "null");
+  const linha = findLessonRowIndex_(sheet, key);
+  if (linha === -1) return null;
+  return JSON.parse(decodeLessonJson_(sheet.getRange(linha, 2).getValue()) || "null");
 }
 
 // Uma celula do Google Sheets aceita no maximo 50.000 caracteres, e a semana
@@ -190,22 +193,36 @@ function decodeLessonJson_(valor) {
   return Utilities.ungzip(Utilities.newBlob(bytes, "application/x-gzip")).getDataAsString();
 }
 
+// Devolve o NUMERO DA LINHA na planilha (1-based), ou -1.
+//
 // Com chaves duplicadas na aba (ver item 1 do cabeçalho), a linha boa é a mais
 // recente — não a primeira. Empate de data resolve pela última linha.
-function findLessonRowIndex_(rows, key) {
-  let best = -1;
-  let bestAt = null;
+//
+// Le so as colunas `key` e `updatedAt`. A versao anterior fazia
+// getDataRange().getValues(), o que puxava junto a coluna `json` inteira — nas
+// planilhas maiores sao megabytes transferidos a CADA leitura e a CADA
+// gravacao, e a gravacao dispara em toda saida de campo. Isso pesava em cima de
+// um endpoint que ja e instavel (ver item 3.1 do RELATORIO_PARA_ASTRA).
+function findLessonRowIndex_(sheet, key) {
+  const ultima = sheet.getLastRow();
+  if (ultima < 2) return -1;
 
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] !== key) continue;
-    const at = rows[i][2] instanceof Date ? rows[i][2] : new Date(rows[i][2] || 0);
-    const valid = at && !isNaN(at.getTime());
-    if (best === -1 || !bestAt || (valid && at.getTime() >= bestAt.getTime())) {
-      best = i;
-      bestAt = valid ? at : bestAt;
+  const chaves = sheet.getRange(2, 1, ultima - 1, 1).getValues();
+  const datas = sheet.getRange(2, 3, ultima - 1, 1).getValues();
+
+  let melhor = -1;
+  let melhorEm = null;
+
+  for (let i = 0; i < chaves.length; i++) {
+    if (chaves[i][0] !== key) continue;
+    const at = datas[i][0] instanceof Date ? datas[i][0] : new Date(datas[i][0] || 0);
+    const valida = at && !isNaN(at.getTime());
+    if (melhor === -1 || !melhorEm || (valida && at.getTime() >= melhorEm.getTime())) {
+      melhor = i + 2;   // +1 pelo cabeçalho, +1 porque a planilha é 1-based
+      melhorEm = valida ? at : melhorEm;
     }
   }
-  return best;
+  return melhor;
 }
 
 function saveLesson_(data) {
@@ -231,25 +248,30 @@ function saveLesson_(data) {
   try {
     const ss = SpreadsheetApp.openById(teacher.spreadsheetId);
     const sheet = ensureSheet_(ss, LESSONS_SHEET, ["key", "json", "updatedAt", "updatedBy"]);
-    const rows = sheet.getDataRange().getValues();
     const now = new Date();
-    const index = findLessonRowIndex_(rows, data.key);
+    const linha = findLessonRowIndex_(sheet, data.key);
 
-    if (index === -1) {
+    if (linha === -1) {
       sheet.appendRow([data.key, armazenado, now, teacherId]);
       return;
     }
 
-    const previous = String(rows[index][1] || "");
+    // So esta linha e lida, em vez da coluna inteira.
+    const anterior = String(sheet.getRange(linha, 2).getValue() || "");
 
-    if (isBlankLesson_(payload) && !isBlankLessonJson_(decodeLessonJson_(previous))) {
+    // Nada mudou: nao escreve, nao arquiva, nao gasta cota. O autosave dispara
+    // em toda saida de campo, entao isto acontece muito.
+    if (anterior === armazenado) return;
+
+    if (isBlankLesson_(payload) && !isBlankLessonJson_(decodeLessonJson_(anterior))) {
       throw new Error("Gravação recusada: o conteúdo enviado está vazio e apagaria o planejamento salvo.");
     }
 
     // O historico guarda a celula exatamente como estava (comprimida ou nao),
     // pra nao gastar tempo de script re-codificando o que ja esta pronto.
-    archiveLesson_(ss, data.key, previous, rows[index][2], rows[index][3]);
-    sheet.getRange(index + 1, 2, 1, 3).setValues([[armazenado, now, teacherId]]);
+    const meta = sheet.getRange(linha, 3, 1, 2).getValues()[0];
+    archiveLesson_(ss, data.key, anterior, meta[0], meta[1]);
+    sheet.getRange(linha, 2, 1, 3).setValues([[armazenado, now, teacherId]]);
   } finally {
     lock.releaseLock();
   }

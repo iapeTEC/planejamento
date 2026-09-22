@@ -1771,7 +1771,22 @@ async function saveToBackend(options = {}) {
         console.warn("save tentativa " + (tentativa + 1) + " falhou:", err && err.message);
       }
     }
-    if(ultimoErro) throw ultimoErro;
+    // O /exec as vezes responde erro tendo GRAVADO. Comprovado em 22/09: uma
+    // gravacao que respondeu {ok:false,"Acao desconhecida."} apareceu gravada
+    // na leitura seguinte. A explicacao que bate com os sintomas e o redirect
+    // do Apps Script sendo reentrado como GET sem parametros, caindo no doGet
+    // — que lanca essa mesma mensagem.
+    //
+    // Entao a resposta do POST nao e a ultima palavra: antes de dizer NAO
+    // SALVOU na cara da professora, le de volta e compara. Se o servidor tem o
+    // que ela escreveu, salvou.
+    if(ultimoErro){
+      if(await confirmouNoServidor(key, corpo)){
+        console.warn("save respondeu erro mas o conteúdo está no servidor:", ultimoErro.message);
+      } else {
+        throw ultimoErro;
+      }
+    }
 
     state.lastSavedSignature = assinatura;
     state.serverSnapshot = corpo;
@@ -1782,6 +1797,21 @@ async function saveToBackend(options = {}) {
     // O rascunho local continua guardado de propósito — é o que ela digitou.
     console.error("saveToBackend falhou:", err);
     setSaveStatus("error", err && err.message ? err.message : String(err));
+  }
+}
+
+// Le a semana de volta e compara com o que acabamos de mandar. E a unica
+// forma honesta de saber se gravou, dado que a resposta do POST nao e
+// confiavel. So compara as linhas: term/weekLabel e companhia podem ser
+// normalizados pelo servidor sem que isso signifique falha.
+async function confirmouNoServidor(key, corpo){
+  try {
+    const doServidor = await apiGet("get", { key: key, teacherId: getTeacherId() });
+    if(!doServidor) return false;
+    return JSON.stringify(doServidor.rows || []) === JSON.stringify(corpo.rows || []);
+  } catch (err) {
+    console.warn("não consegui confirmar a gravação por leitura:", err && err.message);
+    return false;
   }
 }
 
