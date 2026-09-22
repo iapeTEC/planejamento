@@ -79,6 +79,10 @@ const state = {
   // O cadastro da professora (que diz qual e a turma dela) carregou?
   profileFailed: false,
   loading: false,
+  // Assinatura do que o servidor ja tem. Serve pra nao regravar identico: o
+  // blur dispara em toda saida de campo, mesmo sem mudanca nenhuma, e o Apps
+  // Script e instavel sob rajada.
+  lastSavedSignature: null,
 };
 
 const GENERAL_ROWS_PER_DAY = 6;
@@ -1266,6 +1270,7 @@ async function loadWeekIntoState(){
     const payload = await loadFromBackend(key);
     state.loadedKey = key;
     state.serverSnapshot = payload || null;
+    state.lastSavedSignature = payload ? JSON.stringify(buildLessonPayload()) : null;
     offerDraftIfAny();
     return payload;
   } catch (err) {
@@ -1515,6 +1520,142 @@ function offerDraftIfAny(){
   renderDraftBanner(rascunho);
 }
 
+/* =========================
+   EXPORTAR / IMPORTAR
+   Rede de seguranca que nao depende do servidor: a professora baixa a semana
+   como arquivo e pode devolve-la depois. Serve quando o Apps Script esta
+   instavel, e serve como copia dela, no computador dela.
+========================= */
+const EXPORT_APP = "planejamento-iape";
+const EXPORT_FORMATO = 1;
+
+function nomeDoArquivoExport(){
+  const limpo = (t) => String(t || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  return "planejamento_" + limpo(state.teacher) + "_" + limpo(state.className) +
+         "_" + toISODate(state.weekStart) + ".json";
+}
+
+function exportarSemana(){
+  const arquivo = {
+    app: EXPORT_APP,
+    formato: EXPORT_FORMATO,
+    exportadoEm: new Date().toISOString(),
+    key: makeKey(),
+    teacherId: getTeacherId(),
+    professora: state.teacher,
+    turma: state.className,
+    semana: toISODate(state.weekStart),
+    payload: buildLessonPayload(),
+  };
+  const blob = new Blob([JSON.stringify(arquivo, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeDoArquivoExport();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast("Arquivo baixado: " + nomeDoArquivoExport());
+}
+
+async function lerArquivoImportado(arquivo){
+  const texto = await arquivo.text();
+  let dados = null;
+  try { dados = JSON.parse(texto); }
+  catch(_) { throw new Error("este arquivo nao e um JSON valido"); }
+
+  if(!dados || dados.app !== EXPORT_APP) throw new Error("este arquivo nao foi exportado pelo planejamento");
+  if(!dados.payload || !Array.isArray(dados.payload.rows)) throw new Error("o arquivo nao tem as linhas do planejamento");
+
+  // Turma ou semana diferente da que esta aberta seria um tiro no pe: o
+  // conteudo do arquivo entraria por cima de OUTRA semana. Em vez de deixar,
+  // diz exatamente o que abrir antes.
+  if(dados.key && dados.key !== makeKey()){
+    throw new Error("este arquivo e de " + (dados.turma || "?") + ", semana de " +
+      (dados.semana || "?") + ". Abra essa turma e essa semana primeiro, depois importe.");
+  }
+  return dados;
+}
+
+function renderImportBanner(dados){
+  const id = "importBanner";
+  let el = document.getElementById(id);
+  if(!dados){ if(el) el.remove(); return; }
+
+  if(!el){
+    el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = [
+      "position:fixed","top:0","left:0","right:0","z-index:99995",
+      "background:#123a6b","color:#fff","padding:12px 16px",
+      "font-weight:800","text-align:center","box-shadow:0 4px 14px rgba(0,0,0,.25)"
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "";
+
+  const quando = dados.exportadoEm ? new Date(dados.exportadoEm) : null;
+  const dois = (n) => String(n).padStart(2, "0");
+  const quandoTexto = quando
+    ? " (exportado em " + dois(quando.getDate()) + "/" + dois(quando.getMonth() + 1) +
+      " \u00e0s " + dois(quando.getHours()) + ":" + dois(quando.getMinutes()) + ")"
+    : "";
+
+  el.appendChild(document.createTextNode(
+    "Importar " + contarAulas(dados.payload) + " aula(s) do arquivo" + quandoTexto +
+    " por cima do que est\u00e1 na tela? "
+  ));
+
+  const sim = document.createElement("button");
+  sim.type = "button";
+  sim.textContent = "Importar";
+  sim.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  sim.addEventListener("click", () => {
+    applyLessonPayload(dados.payload);
+    renderImportBanner(null);
+    saveDraftLocally();
+    toast("Importado. Confira e clique em Salvar.");
+  });
+  el.appendChild(sim);
+
+  const nao = document.createElement("button");
+  nao.type = "button";
+  nao.textContent = "Cancelar";
+  nao.style.cssText = "margin:0 6px;padding:6px 12px;border:0;border-radius:10px;font-weight:800;cursor:pointer";
+  nao.addEventListener("click", () => renderImportBanner(null));
+  el.appendChild(nao);
+}
+
+function initExportImport(){
+  if(state.isViewMode) return;
+
+  const btnExportar = document.getElementById("exportBtn");
+  if(btnExportar && btnExportar.dataset.bound !== "true"){
+    btnExportar.dataset.bound = "true";
+    btnExportar.addEventListener("click", () => exportarSemana());
+  }
+
+  const btnImportar = document.getElementById("importBtn");
+  const campo = document.getElementById("importFile");
+  if(btnImportar && campo && btnImportar.dataset.bound !== "true"){
+    btnImportar.dataset.bound = "true";
+    btnImportar.addEventListener("click", () => campo.click());
+    campo.addEventListener("change", async () => {
+      const arquivo = campo.files && campo.files[0];
+      campo.value = "";                 // permite reimportar o mesmo arquivo
+      if(!arquivo) return;
+      try {
+        renderImportBanner(await lerArquivoImportado(arquivo));
+      } catch (err) {
+        toast("N\u00e3o consegui importar: " + (err && err.message ? err.message : err));
+      }
+    });
+  }
+}
+
 // Faixa fixa no topo avisando que a edição está travada. Sem isso a professora
 // digitaria a semana inteira achando que está salvando.
 function renderLoadGuardBanner(){
@@ -1586,6 +1727,14 @@ async function saveToBackend(options = {}) {
     return;
   }
 
+  // Nada mudou desde a ultima gravacao confirmada? Nao torra uma chamada.
+  // O blur dispara mesmo quando a professora so passou pelo campo.
+  const assinatura = JSON.stringify(corpo);
+  if(!options.forcar && assinatura === state.lastSavedSignature){
+    setSaveStatus("saved");
+    return;
+  }
+
   saveDraftLocally();          // o rascunho vai pro disco ANTES de depender da rede
   setSaveStatus("saving");
 
@@ -1594,22 +1743,37 @@ async function saveToBackend(options = {}) {
     // Script preenche e.parameter normalmente. O importante é que agora dá pra
     // LER a resposta — antes isso ia num iframe cego e a tela dizia "Salvo."
     // sem o servidor ter respondido nada.
-    const resposta = await fetch(GAS_URL, {
-      method: "POST",
-      body: new URLSearchParams({
-        action: "save",
-        data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
-        ts: String(Date.now()),
-      }),
-    });
-    if(!resposta.ok) throw new Error("o servidor respondeu HTTP " + resposta.status);
-
+    // O Apps Script falha de forma intermitente sob rajada (medido: a mesma
+    // leitura levando 3s numa hora e estourando 40s na seguinte). Uma falha
+    // isolada nao pode virar "NAO SALVOU" na cara da professora.
     let saida = null;
-    try { saida = await resposta.json(); }
-    catch(_) { throw new Error("resposta ilegível do servidor"); }
+    let ultimoErro = null;
+    for(let tentativa = 0; tentativa < 3; tentativa++){
+      if(tentativa > 0) await esperar(1000 * Math.pow(2, tentativa - 1));
+      try {
+        const resposta = await fetch(GAS_URL, {
+          method: "POST",
+          body: new URLSearchParams({
+            action: "save",
+            data: JSON.stringify({ key: key, teacherId: getTeacherId(), payload: corpo }),
+            ts: String(Date.now()),
+          }),
+        });
+        if(!resposta.ok) throw new Error("o servidor respondeu HTTP " + resposta.status);
+        try { saida = await resposta.json(); }
+        catch(_) { throw new Error("resposta ilegível do servidor"); }
+        if(!saida || saida.ok !== true) throw new Error((saida && saida.error) || "o servidor recusou a gravação");
+        ultimoErro = null;
+        break;
+      } catch (err) {
+        ultimoErro = err;
+        saida = null;
+        console.warn("save tentativa " + (tentativa + 1) + " falhou:", err && err.message);
+      }
+    }
+    if(ultimoErro) throw ultimoErro;
 
-    if(!saida || saida.ok !== true) throw new Error((saida && saida.error) || "o servidor recusou a gravação");
-
+    state.lastSavedSignature = assinatura;
     state.serverSnapshot = corpo;
     state.allowBlankKey = null;
     clearDraftLocally();
@@ -1834,6 +1998,7 @@ async function init(){
   initTermPicker();
   initClassPicker(); 
   initShare();
+  initExportImport();
   initWeekArrows(); //Chama a seta de calendario
 
 
