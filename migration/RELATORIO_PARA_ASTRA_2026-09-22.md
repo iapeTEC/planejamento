@@ -130,6 +130,45 @@ done
 semana". **Não sei se é cota, throttling ou peso do script — não deu para
 determinar** (ver 3.2).
 
+Duas coisas que já foram descartadas, para não se perder tempo:
+
+- **Não é o tamanho do conteúdo.** A maior semana do sistema (Carol, 45.462
+  chars) respondeu em 2,9s enquanto a menor (Raquel, 1.975) estourou 40s.
+- **Não é peso da consulta.** Em 22/09 o backend foi para a v12, que parou de
+  puxar a coluna `json` inteira a cada leitura e gravação. Medido logo depois:
+  25,2s / 31,5s / 3,7s — igualmente errático. A economia vale, mas não era a causa.
+
+### 3.1.1 O `/exec` responde erro TENDO gravado — falso negativo
+
+O achado mais concreto, e o que explica a queixa da professora.
+
+Reproduzido em 22/09 **fora do navegador**, de um script Python simples, sem
+cabeçalho nenhum: uma gravação respondeu
+
+```json
+{"ok": false, "error": "Ação desconhecida."}
+```
+
+e a leitura seguinte mostrou **o conteúdo gravado**. Ou seja: o POST executou,
+gravou, e a resposta veio como erro.
+
+A explicação que bate com os sintomas é o redirect do `/exec` sendo reentrado
+como **GET sem parâmetros**, caindo no `doGet` — que lança exatamente essa
+mensagem para ação desconhecida. **Não consegui provar esse caminho**, e sem os
+logos de execução (3.2) não dá para ir além.
+
+Mitigado no cliente: antes de mostrar "NÃO SALVOU", o `app.js` lê a semana de
+volta e compara as linhas; se o servidor tem o que foi escrito, considera
+salvo. **É contorno, não conserto** — vale investigar por que a resposta vem
+errada.
+
+**Reproduzir** (grava uma marca e restaura; use uma semana de teste):
+```bash
+curl -s -X POST --data-urlencode "action=save"   --data-urlencode 'data={"key":"...","teacherId":"...","payload":{...}}'   "https://script.google.com/macros/s/AKfycbwKhO.../exec"
+# repetir algumas vezes: parte das respostas volta "Ação desconhecida."
+# mesmo com a gravação tendo acontecido
+```
+
 ### 3.2 Não há como ver os logs de execução do Apps Script
 
 O projeto não tem projeto GCP associado, então `clasp logs` responde
